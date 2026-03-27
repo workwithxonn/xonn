@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+@theme {
+  --color-parrot: #A7FC00;
+  --color-parrot-glow: rgba(167, 252, 0, 0.3);
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-black text-white font-sans selection:bg-parrot selection:text-black;
+  }
+}
+
+@layer utilities {
+  .glow-parrot {
+    text-shadow: 0 0 10px var(--color-parrot-glow);
+  }
+  .bg-glow-parrot {
+    box-shadow: 0 0 20px var(--color-parrot-glow);
+  }
+  .border-glow-parrot {
+    border-color: var(--color-parrot);
+    box-shadow: 0 0 10px var(--color-parrot-glow);
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}

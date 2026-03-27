@@ -1,0 +1,66 @@
+{
+  "entities": {
+    "Order": {
+      "title": "Order",
+      "description": "A customer order for thumbnails or GFX",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerEmail": { "type": "string", "format": "email" },
+        "channelName": { "type": "string" },
+        "niche": { "type": "string" },
+        "projectDetails": { "type": "string" },
+        "budget": { "type": "string" },
+        "referenceImages": { "type": "array", "items": { "type": "string" } },
+        "productId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "processing", "completed", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "amount": { "type": "number" },
+        "advancePaid": { "type": "number" },
+        "paymentStatus": { "type": "string", "enum": ["pending", "partial", "full"] }
+      },
+      "required": ["userId", "customerName", "customerEmail", "projectDetails", "productId", "status", "createdAt", "amount", "advancePaid", "paymentStatus"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "A digital product or service offered by XONN",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "price": { "type": "number" },
+        "description": { "type": "string" },
+        "features": { "type": "array", "items": { "type": "string" } },
+        "type": { "type": "string", "enum": ["thumbnail", "gfx", "kit"] }
+      },
+      "required": ["name", "price", "description", "features", "type"]
+    },
+    "User": {
+      "title": "User",
+      "description": "A user of the XONN platform",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["admin", "user"] }
+      },
+      "required": ["email", "role"]
+    }
+  },
+  "firestore": {
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Collection of customer orders"
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Collection of available products"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of user profiles and roles"
+    }
+  }
+}

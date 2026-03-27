@@ -1,0 +1,117 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId
+    // Fields:
+    //   - email: string (required, email)
+    //   - role: string (required, enum: ['admin', 'user'])
+    //
+    // Collection: orders
+    // Document ID: orderId
+    // Fields:
+    //   - userId: string (required)
+    //   - customerName: string (required)
+    //   - customerEmail: string (required, email)
+    //   - channelName: string (optional)
+    //   - niche: string (optional)
+    //   - projectDetails: string (required)
+    //   - budget: string (optional)
+    //   - referenceImages: list (optional)
+    //   - productId: string (required)
+    //   - status: string (required, enum: ['pending', 'processing', 'completed', 'cancelled'])
+    //   - createdAt: timestamp (required)
+    //   - amount: number (required)
+    //   - advancePaid: number (required)
+    //   - paymentStatus: string (required, enum: ['pending', 'partial', 'full'])
+    //
+    // Collection: products
+    // Document ID: productId
+    // Fields:
+    //   - name: string (required)
+    //   - price: number (required)
+    //   - description: string (required)
+    //   - features: list (required)
+    //   - type: string (required, enum: ['thumbnail', 'gfx', 'kit'])
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "itsyadavaman05@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidOrder(data) {
+      return data.userId is string &&
+             data.customerName is string && data.customerName.size() > 0 && data.customerName.size() < 100 &&
+             isValidEmail(data.customerEmail) &&
+             data.projectDetails is string && data.projectDetails.size() > 0 && data.projectDetails.size() < 2000 &&
+             data.productId is string &&
+             data.status in ['pending', 'processing', 'completed', 'cancelled'] &&
+             data.createdAt is timestamp &&
+             data.amount is number && data.amount >= 0 &&
+             data.advancePaid is number && data.advancePaid >= 0 &&
+             data.paymentStatus in ['pending', 'partial', 'full'];
+    }
+
+    function isValidUser(data) {
+      return isValidEmail(data.email) &&
+             data.role in ['admin', 'user'];
+    }
+
+    function isValidProduct(data) {
+      return data.name is string && data.name.size() > 0 &&
+             data.price is number && data.price >= 0 &&
+             data.description is string &&
+             data.features is list &&
+             data.type in ['thumbnail', 'gfx', 'kit'];
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == 'user';
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid && isValidOrder(request.resource.data);
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidProduct(request.resource.data);
+    }
+  }
+}
