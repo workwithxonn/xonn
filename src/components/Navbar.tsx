@@ -16,7 +16,6 @@ export default function Navbar() {
 
           <div className="hidden md:flex items-center space-x-8">
             <a href="#products" className="text-sm font-medium text-white/70 hover:text-parrot transition-colors">Products</a>
-            <a href="#portfolio" className="text-sm font-medium text-white/70 hover:text-parrot transition-colors">Portfolio</a>
             <a href="#faq" className="text-sm font-medium text-white/70 hover:text-parrot transition-colors">FAQ</a>
           </div>
 

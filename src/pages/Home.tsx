@@ -1,6 +1,5 @@
 import Hero from "../components/Hero";
 import Products from "../components/Products";
-import Portfolio from "../components/Portfolio";
 import WhyXonn from "../components/WhyXonn";
 import Testimonials from "../components/Testimonials";
 import FAQ from "../components/FAQ";
@@ -11,7 +10,6 @@ export default function Home() {
     <main className="bg-black">
       <Hero />
       <Products />
-      <Portfolio />
       <WhyXonn />
       <Testimonials />
       <FAQ />
