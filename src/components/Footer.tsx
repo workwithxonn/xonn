@@ -32,9 +32,9 @@ export default function Footer() {
             <div className="space-y-4">
               <h4 className="text-xs font-bold text-white/40 uppercase tracking-widest">Social</h4>
               <ul className="space-y-2">
-                <li><a href="#" className="flex items-center space-x-2 text-white/60 hover:text-parrot transition-colors"><Twitter size={16} /> <span>Twitter</span></a></li>
-                <li><a href="#" className="flex items-center space-x-2 text-white/60 hover:text-parrot transition-colors"><Instagram size={16} /> <span>Instagram</span></a></li>
-                <li><a href="#" className="flex items-center space-x-2 text-white/60 hover:text-parrot transition-colors"><Youtube size={16} /> <span>YouTube</span></a></li>
+                <li><a href="https://x.com/xonngfx" target="_blank" rel="noopener noreferrer" className="flex items-center space-x-2 text-white/60 hover:text-parrot transition-colors"><Twitter size={16} /> <span>Twitter</span></a></li>
+                <li><a href="https://www.instagram.com/xonn.gfx" target="_blank" rel="noopener noreferrer" className="flex items-center space-x-2 text-white/60 hover:text-parrot transition-colors"><Instagram size={16} /> <span>Instagram</span></a></li>
+                <li><a href="https://www.youtube.com/@XONN.V" target="_blank" rel="noopener noreferrer" className="flex items-center space-x-2 text-white/60 hover:text-parrot transition-colors"><Youtube size={16} /> <span>YouTube</span></a></li>
               </ul>
             </div>
           </div>
