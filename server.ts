@@ -18,26 +18,45 @@ async function startServer() {
 
   app.use(express.json());
 
-  const razorpay = new Razorpay({
-    key_id: process.env.VITE_RAZORPAY_KEY_ID || "",
-    key_secret: process.env.RAZORPAY_KEY_SECRET || "",
-  });
+  let razorpayInstance: any = null;
+
+  const getRazorpay = () => {
+    if (!razorpayInstance) {
+      const key_id = process.env.VITE_RAZORPAY_KEY_ID;
+      const key_secret = process.env.RAZORPAY_KEY_SECRET;
+
+      if (!key_id || !key_secret) {
+        throw new Error("Razorpay keys are missing. Please configure VITE_RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in the Secrets panel.");
+      }
+
+      razorpayInstance = new Razorpay({
+        key_id,
+        key_secret,
+      });
+    }
+    return razorpayInstance;
+  };
 
   // API Routes
   app.post("/api/create-order", async (req, res) => {
     try {
       const { amount } = req.body;
+      if (!amount || isNaN(amount)) {
+        return res.status(400).json({ error: "Invalid amount" });
+      }
+
+      const razorpay = getRazorpay();
       const options = {
-        amount: amount * 100, // amount in smallest currency unit (paise)
+        amount: Math.round(amount * 100), // amount in smallest currency unit (paise)
         currency: "INR",
         receipt: `receipt_${Date.now()}`,
       };
 
       const order = await razorpay.orders.create(options);
       res.json(order);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Razorpay error:", error);
-      res.status(500).json({ error: "Failed to create order" });
+      res.status(500).json({ error: error.message || "Failed to create order" });
     }
   });
 

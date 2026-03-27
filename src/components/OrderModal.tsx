@@ -27,6 +27,12 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
     budget: "",
   });
 
+  React.useEffect(() => {
+    if (user?.email && !formData.customerEmail) {
+      setFormData(prev => ({ ...prev, customerEmail: user.email || "" }));
+    }
+  }, [user]);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       setFiles(Array.from(e.target.files));
@@ -53,6 +59,13 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
 
     setLoading(true);
     try {
+      const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID;
+      if (!razorpayKey) {
+        toast.error("Razorpay Key ID is missing. Please configure it in settings.");
+        setLoading(false);
+        return;
+      }
+
       const advanceAmount = Math.round(product.price * 0.5);
       
       // Create Razorpay order on backend
@@ -66,7 +79,7 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
       const order = await response.json();
 
       const options = {
-        key: import.meta.env.VITE_RAZORPAY_KEY_ID,
+        key: razorpayKey,
         amount: order.amount,
         currency: "INR",
         name: "XONN",
@@ -84,6 +97,12 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
           color: "#A7FC00",
         },
       };
+
+      if (!(window as any).Razorpay) {
+        toast.error("Razorpay SDK failed to load. Please check your internet connection.");
+        setLoading(false);
+        return;
+      }
 
       const rzp = new (window as any).Razorpay(options);
       rzp.open();
@@ -115,6 +134,7 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
         amount: product.price,
         advancePaid: advancePaid,
         paymentStatus: 'partial',
+        razorpayPaymentId: paymentId,
       };
 
       await addDoc(collection(db, "orders"), orderData);

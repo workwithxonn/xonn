@@ -28,6 +28,7 @@ service cloud.firestore {
     //   - amount: number (required)
     //   - advancePaid: number (required)
     //   - paymentStatus: string (required, enum: ['pending', 'partial', 'full'])
+    //   - razorpayPaymentId: string (optional)
     //
     // Collection: products
     // Document ID: productId
@@ -75,7 +76,8 @@ service cloud.firestore {
              data.createdAt is timestamp &&
              data.amount is number && data.amount >= 0 &&
              data.advancePaid is number && data.advancePaid >= 0 &&
-             data.paymentStatus in ['pending', 'partial', 'full'];
+             data.paymentStatus in ['pending', 'partial', 'full'] &&
+             (!('razorpayPaymentId' in data) || data.razorpayPaymentId is string);
     }
 
     function isValidUser(data) {

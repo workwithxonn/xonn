@@ -19,7 +19,8 @@
         "createdAt": { "type": "string", "format": "date-time" },
         "amount": { "type": "number" },
         "advancePaid": { "type": "number" },
-        "paymentStatus": { "type": "string", "enum": ["pending", "partial", "full"] }
+        "paymentStatus": { "type": "string", "enum": ["pending", "partial", "full"] },
+        "razorpayPaymentId": { "type": "string" }
       },
       "required": ["userId", "customerName", "customerEmail", "projectDetails", "productId", "status", "createdAt", "amount", "advancePaid", "paymentStatus"]
     },

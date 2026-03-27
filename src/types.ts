@@ -27,6 +27,7 @@ export interface Order {
   amount: number;
   advancePaid: number;
   paymentStatus: 'pending' | 'partial' | 'full';
+  razorpayPaymentId?: string;
 }
 
 export interface UserProfile {

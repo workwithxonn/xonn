@@ -48,7 +48,7 @@ const PRODUCTS: Product[] = [
   },
   {
     id: "stream-screens",
-    name: "Stream Screens",
+    name: "Stream Overlays (Start/End/Pause)",
     price: 600,
     description: "Starting, Ending, and Paused overlays for your stream.",
     features: ["2-3 Days Delivery", "Full Set", "Cohesive Design", "High Resolution"],
