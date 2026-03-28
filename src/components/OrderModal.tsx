@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, ChevronRight, ChevronLeft, Upload, CheckCircle2, Loader2, CreditCard, Clock } from "lucide-react";
 import { Product, Order } from "../types";
 import { db, storage } from "../firebase";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, getDoc, doc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { toast } from "sonner";
 
@@ -16,6 +16,7 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
+  const [razorpayKey, setRazorpayKey] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     customerName: "",
     customerEmail: "",
@@ -26,6 +27,25 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
     projectDetails: "",
     budget: "",
   });
+
+  // Fetch Razorpay Key on mount
+  React.useEffect(() => {
+    const fetchKey = async () => {
+      try {
+        const settingsDoc = await getDoc(doc(db, "settings", "razorpay"));
+        if (settingsDoc.exists()) {
+          setRazorpayKey(settingsDoc.data().keyId);
+        } else {
+          // Fallback to env
+          setRazorpayKey(import.meta.env.VITE_RAZORPAY_KEY_ID);
+        }
+      } catch (error) {
+        console.error("Error fetching Razorpay key:", error);
+        setRazorpayKey(import.meta.env.VITE_RAZORPAY_KEY_ID);
+      }
+    };
+    fetchKey();
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -66,10 +86,31 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
       return;
     }
 
+    // Ensure Razorpay script is loaded
+    if (!(window as any).Razorpay) {
+      toast.error("Razorpay script not loaded. Please check your internet connection and refresh.");
+      console.error("Razorpay script missing from window object");
+      return;
+    }
+
+    const finalKey = razorpayKey || localStorage.getItem("razorpay_key_id") || import.meta.env.VITE_RAZORPAY_KEY_ID;
+    
+    if (!finalKey) {
+      toast.error("Razorpay API Key is missing. Please contact support.");
+      console.error("Razorpay Key ID is empty or undefined");
+      return;
+    }
+
     setLoading(true);
     try {
       const advanceAmount = Math.round(product.price * 0.5);
       
+      console.log("Initiating payment with:", {
+        key: finalKey,
+        amountRupees: advanceAmount,
+        email: formData.customerEmail
+      });
+
       // Create Razorpay Order via backend
       const response = await fetch("/api/create-order", {
         method: "POST",
@@ -77,11 +118,16 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
         body: JSON.stringify({ amount: advanceAmount }),
       });
 
-      if (!response.ok) throw new Error("Failed to create payment order");
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to create payment order");
+      }
+      
       const rzpOrder = await response.json();
+      console.log("Razorpay order created:", rzpOrder);
 
       const options = {
-        key: localStorage.getItem("razorpay_key_id") || import.meta.env.VITE_RAZORPAY_KEY_ID,
+        key: finalKey,
         amount: rzpOrder.amount,
         currency: "INR",
         name: "XONN",
@@ -89,6 +135,7 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
         order_id: rzpOrder.id,
         handler: async (response: any) => {
           try {
+            console.log("Payment successful, saving order...", response);
             setLoading(true);
             const imageUrls = await uploadFiles();
             
@@ -129,15 +176,29 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
           contact: formData.customerPhone,
         },
         theme: { color: "#CCFF00" },
+        modal: {
+          ondismiss: function() {
+            setLoading(false);
+            console.log("Checkout modal closed by user");
+          }
+        }
       };
 
       const rzp = new (window as any).Razorpay(options);
+      rzp.on('payment.failed', function (response: any) {
+        console.error("Payment failed:", response.error);
+        toast.error(`Payment failed: ${response.error.description}`);
+        setLoading(false);
+      });
+      
       rzp.open();
-    } catch (error) {
-      console.error("Payment error:", error);
-      toast.error("Failed to initiate payment. Please try again.");
+    } catch (error: any) {
+      console.error("Payment initialization error:", error);
+      toast.error(error.message || "Failed to initiate payment. Please try again.");
     } finally {
-      setLoading(false);
+      // Note: we don't set loading to false here if rzp.open() succeeds, 
+      // because the modal is open. We handle it in ondismiss or handler.
+      // However, if it fails before rzp.open(), we need to reset it.
     }
   };
 

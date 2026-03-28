@@ -5,8 +5,18 @@ import { fileURLToPath } from "url";
 import RazorpayModule from "razorpay";
 import dotenv from "dotenv";
 import nodemailer from "nodemailer";
+import admin from "firebase-admin";
+import { getFirestore } from "firebase-admin/firestore";
+import fs from "fs";
 
 dotenv.config();
+
+// Initialize Firebase Admin
+const firebaseConfig = JSON.parse(fs.readFileSync("./firebase-applet-config.json", "utf-8"));
+const adminApp = admin.initializeApp({
+  projectId: firebaseConfig.projectId,
+});
+const db = getFirestore(adminApp, firebaseConfig.firestoreDatabaseId);
 
 const Razorpay = (RazorpayModule as any).default || RazorpayModule;
 
@@ -19,23 +29,33 @@ async function startServer() {
 
   app.use(express.json());
 
-  let razorpayInstance: any = null;
+  const getRazorpay = async () => {
+    let key_id = process.env.VITE_RAZORPAY_KEY_ID;
+    let key_secret = process.env.RAZORPAY_KEY_SECRET;
 
-  const getRazorpay = () => {
-    if (!razorpayInstance) {
-      const key_id = process.env.VITE_RAZORPAY_KEY_ID;
-      const key_secret = process.env.RAZORPAY_KEY_SECRET;
-
-      if (!key_id || !key_secret) {
-        throw new Error("Razorpay keys are missing. Please configure VITE_RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in the Secrets panel.");
+    try {
+      // Try to get from Firestore settings first
+      const settingsDoc = await db.collection("settings").doc("razorpay").get();
+      if (settingsDoc.exists) {
+        const data = settingsDoc.data();
+        if (data?.keyId) key_id = data.keyId;
+        if (data?.keySecret) key_secret = data.keySecret;
+        console.log("Using Razorpay keys from Firestore");
+      } else {
+        console.log("Using Razorpay keys from environment variables");
       }
-
-      razorpayInstance = new Razorpay({
-        key_id,
-        key_secret,
-      });
+    } catch (error) {
+      console.error("Error fetching Razorpay settings from Firestore:", error);
     }
-    return razorpayInstance;
+
+    if (!key_id || !key_secret) {
+      throw new Error("Razorpay keys are missing. Please configure them in the Admin panel or Secrets panel.");
+    }
+
+    return new Razorpay({
+      key_id,
+      key_secret,
+    });
   };
 
   // Email Transporter (Mock for now, user should configure SMTP in Secrets)
@@ -109,7 +129,7 @@ async function startServer() {
         return res.status(400).json({ error: "Invalid amount" });
       }
 
-      const razorpay = getRazorpay();
+      const razorpay = await getRazorpay();
       const options = {
         amount: Math.round(amount * 100), // amount in smallest currency unit (paise)
         currency: "INR",

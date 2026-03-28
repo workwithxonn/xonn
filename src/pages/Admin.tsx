@@ -9,7 +9,8 @@ import { toast } from "sonner";
 export default function Admin() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-  const [razorpayKey, setRazorpayKey] = useState(localStorage.getItem('razorpay_key_id') || "");
+  const [razorpayKey, setRazorpayKey] = useState("");
+  const [razorpaySecret, setRazorpaySecret] = useState("");
   const [adminPassword, setAdminPassword] = useState(localStorage.getItem('admin_password') || "");
   const [hasPasswordSet, setHasPasswordSet] = useState(!!localStorage.getItem('admin_password'));
   const [showSettings, setShowSettings] = useState(false);
@@ -21,6 +22,26 @@ export default function Admin() {
   const [isTrustedDevice, setIsTrustedDevice] = useState(false);
   const [trustedDevices, setTrustedDevices] = useState<AdminDevice[]>([]);
   const [deviceId, setDeviceId] = useState(localStorage.getItem('admin_device_id') || "");
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const settingsDoc = await getDoc(doc(db, "settings", "razorpay"));
+        if (settingsDoc.exists()) {
+          const data = settingsDoc.data();
+          setRazorpayKey(data.keyId || "");
+          setRazorpaySecret(data.keySecret || "");
+        } else {
+          // Fallback to localStorage for migration
+          const localKey = localStorage.getItem('razorpay_key_id');
+          if (localKey) setRazorpayKey(localKey);
+        }
+      } catch (error) {
+        console.error("Error fetching settings:", error);
+      }
+    };
+    if (isAuthenticated) fetchSettings();
+  }, [isAuthenticated]);
 
   useEffect(() => {
     const checkTrust = async () => {
@@ -191,11 +212,35 @@ export default function Admin() {
     }
   };
 
-  const saveSettings = () => {
-    localStorage.setItem('razorpay_key_id', razorpayKey);
-    localStorage.setItem('admin_password', adminPassword);
-    toast.success("Settings saved successfully.");
-    setShowSettings(false);
+  const saveSettings = async () => {
+    if (razorpayKey && !razorpayKey.startsWith('rzp_')) {
+      toast.error("Invalid Razorpay Key ID format. It should start with 'rzp_'.");
+      return;
+    }
+    
+    if (adminPassword.trim().length < 4) {
+      toast.error("Admin password must be at least 4 characters.");
+      return;
+    }
+
+    try {
+      // Save to Firestore for backend access
+      await setDoc(doc(db, "settings", "razorpay"), {
+        keyId: razorpayKey.trim(),
+        keySecret: razorpaySecret.trim(),
+        updatedAt: serverTimestamp()
+      });
+
+      // Also save to localStorage for immediate client access
+      localStorage.setItem('razorpay_key_id', razorpayKey.trim());
+      localStorage.setItem('admin_password', adminPassword.trim());
+      
+      toast.success("Settings saved successfully.");
+      setShowSettings(false);
+    } catch (error) {
+      console.error("Error saving settings:", error);
+      toast.error("Failed to save settings to database.");
+    }
   };
 
   const updateStatus = async (order: Order, status: OrderStatus) => {
@@ -398,6 +443,14 @@ export default function Admin() {
                 onChange={(e) => setRazorpayKey(e.target.value)}
                 placeholder="rzp_test_..."
                 className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/20 focus:border-parrot focus:ring-1 focus:ring-parrot outline-none transition-all mb-4"
+              />
+              <label className="block text-xs font-bold text-white/40 uppercase tracking-widest mb-2">Razorpay Key Secret</label>
+              <input 
+                type="password"
+                value={razorpaySecret}
+                onChange={(e) => setRazorpaySecret(e.target.value)}
+                placeholder="••••••••••••••••"
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/20 focus:border-parrot focus:ring-1 focus:ring-parrot outline-none transition-all"
               />
             </div>
             <div className="max-w-md">
