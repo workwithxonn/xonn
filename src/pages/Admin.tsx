@@ -11,6 +11,7 @@ export default function Admin() {
   const [loading, setLoading] = useState(true);
   const [razorpayKey, setRazorpayKey] = useState(localStorage.getItem('razorpay_key_id') || "");
   const [adminPassword, setAdminPassword] = useState(localStorage.getItem('admin_password') || "");
+  const [hasPasswordSet, setHasPasswordSet] = useState(!!localStorage.getItem('admin_password'));
   const [showSettings, setShowSettings] = useState(false);
   const [showDeviceManager, setShowDeviceManager] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(sessionStorage.getItem('admin_token') === 'mock_admin_token');
@@ -67,6 +68,19 @@ export default function Admin() {
       unsubscribeDevices();
     };
   }, [isAuthenticated]);
+
+  const handleInitialSetup = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password.trim().length < 4) {
+      toast.error("Password must be at least 4 characters.");
+      return;
+    }
+    localStorage.setItem('admin_password', password.trim());
+    setAdminPassword(password.trim());
+    setHasPasswordSet(true);
+    setPassword("");
+    toast.success("Admin password set successfully! Now you can log in.");
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -213,6 +227,49 @@ export default function Admin() {
       toast.error("Failed to update status");
     }
   };
+
+  if (!hasPasswordSet) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-black">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="w-full max-w-md p-8 bg-zinc-900 border border-parrot/30 rounded-3xl shadow-2xl"
+        >
+          <div className="w-16 h-16 bg-parrot/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <Shield className="text-parrot" size={32} />
+          </div>
+          <h1 className="text-3xl font-black tracking-tighter uppercase text-center mb-2">
+            INITIAL <span className="text-parrot">SETUP.</span>
+          </h1>
+          <p className="text-white/40 text-center text-sm mb-8">
+            No admin password detected. Please set your master password to secure the dashboard.
+          </p>
+          
+          <form onSubmit={handleInitialSetup} className="space-y-4">
+            <div className="relative">
+              <input 
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Set New Admin Password"
+                className="w-full px-4 py-4 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/20 focus:border-parrot focus:ring-1 focus:ring-parrot outline-none transition-all"
+                required
+              />
+            </div>
+
+            <button 
+              type="submit"
+              className="w-full py-4 bg-parrot text-black font-bold rounded-xl hover:bg-white transition-all flex items-center justify-center space-x-2"
+            >
+              <CheckCircle size={20} />
+              <span>Set Password & Continue</span>
+            </button>
+          </form>
+        </motion.div>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return (
