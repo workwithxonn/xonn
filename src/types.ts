@@ -1,5 +1,5 @@
 export type ProductType = 'thumbnail' | 'gfx' | 'kit';
-export type OrderStatus = 'pending' | 'approved' | 'rejected' | 'processing' | 'completed' | 'cancelled';
+export type OrderStatus = 'pending' | 'approved' | 'rejected' | 'refunded' | 'processing' | 'completed' | 'cancelled';
 
 export interface Product {
   id: string;
@@ -16,6 +16,8 @@ export interface Order {
   userId: string;
   customerName: string;
   customerEmail: string;
+  customerPhone: string;
+  customerUpiId: string;
   channelName?: string;
   niche?: string;
   projectDetails: string;
@@ -26,12 +28,15 @@ export interface Order {
   createdAt: any; // Firestore Timestamp
   amount: number;
   advancePaid: number;
-  paymentStatus: 'pending' | 'partial' | 'full';
+  paymentStatus: 'pending' | 'paid' | 'refunded';
   razorpayPaymentId?: string;
+  razorpayOrderId?: string;
 }
 
-export interface UserProfile {
+export interface AdminDevice {
   id: string;
-  email: string;
-  role: 'admin' | 'user';
+  name: string;
+  userAgent: string;
+  lastUsed: any; // Firestore Timestamp
+  isTrusted: boolean;
 }

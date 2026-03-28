@@ -3,7 +3,7 @@ import { db } from "../firebase";
 import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
 import { Order } from "../types";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Loader2, Clock, CheckCircle, XCircle, CreditCard, ExternalLink } from "lucide-react";
+import { Search, Loader2, Clock, CheckCircle, XCircle, CreditCard, ExternalLink, RefreshCcw } from "lucide-react";
 import { toast } from "sonner";
 
 export default function OrderStatus() {
@@ -11,7 +11,6 @@ export default function OrderStatus() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  const [payingOrderId, setPayingOrderId] = useState<string | null>(null);
 
   const fetchOrders = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,55 +39,13 @@ export default function OrderStatus() {
     }
   };
 
-  const handlePayment = async (order: Order) => {
-    setPayingOrderId(order.id!);
-    try {
-      const response = await fetch('/api/create-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: order.amount * 0.5 }) // 50% advance
-      });
-      
-      const rzpOrder = await response.json();
-      
-      const options = {
-        key: localStorage.getItem('razorpay_key_id') || import.meta.env.VITE_RAZORPAY_KEY_ID,
-        amount: rzpOrder.amount,
-        currency: rzpOrder.currency,
-        name: "XONN GFX",
-        description: `Advance for Order #${order.id?.slice(-6)}`,
-        order_id: rzpOrder.id,
-        prefill: {
-          name: order.customerName,
-          email: order.customerEmail,
-        },
-        handler: async function (response: any) {
-          // In a real app, verify payment on backend
-          toast.success("Payment successful! We'll start your project soon.");
-          // Update order status in Firestore (simplified for demo)
-          // await updateDoc(doc(db, "orders", order.id!), { paymentStatus: 'partial', razorpayPaymentId: response.razorpay_payment_id, status: 'processing' });
-          fetchOrders({ preventDefault: () => {} } as any);
-        },
-        theme: { color: "#A7FC00" },
-      };
-
-      const rzp = new (window as any).Razorpay(options);
-      rzp.open();
-    } catch (error) {
-      console.error("Payment error:", error);
-      toast.error("Failed to initiate payment.");
-    } finally {
-      setPayingOrderId(null);
-    }
-  };
-
   return (
     <div className="pt-32 pb-20 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto min-h-screen">
       <div className="text-center mb-12">
         <h1 className="text-4xl md:text-6xl font-black tracking-tighter uppercase mb-4">
           CHECK <span className="text-parrot">STATUS.</span>
         </h1>
-        <p className="text-white/60">Enter your email to track your orders and proceed with payments.</p>
+        <p className="text-white/60">Enter your email to track your orders and refund status.</p>
       </div>
 
       <form onSubmit={fetchOrders} className="max-w-md mx-auto mb-16">
@@ -137,13 +94,22 @@ export default function OrderStatus() {
                       <div className={`flex items-center space-x-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
                         order.status === 'approved' ? 'bg-parrot/20 text-parrot' :
                         order.status === 'rejected' ? 'bg-red-500/20 text-red-500' :
+                        order.status === 'refunded' ? 'bg-orange-500/20 text-orange-500' :
                         order.status === 'pending' ? 'bg-yellow-500/20 text-yellow-500' :
                         'bg-blue-500/20 text-blue-500'
                       }`}>
                         {order.status === 'pending' && <Clock size={10} />}
                         {order.status === 'approved' && <CheckCircle size={10} />}
                         {order.status === 'rejected' && <XCircle size={10} />}
+                        {order.status === 'refunded' && <RefreshCcw size={10} />}
                         <span>{order.status}</span>
+                      </div>
+                      <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                        order.paymentStatus === 'paid' ? 'bg-green-500/20 text-green-500' :
+                        order.paymentStatus === 'refunded' ? 'bg-orange-500/20 text-orange-500' :
+                        'bg-white/10 text-white/40'
+                      }`}>
+                        {order.paymentStatus}
                       </div>
                     </div>
                     <h3 className="text-xl font-bold">{order.channelName || "Direct Order"}</h3>
@@ -152,33 +118,14 @@ export default function OrderStatus() {
 
                   <div className="flex items-center justify-between md:justify-end gap-8">
                     <div className="text-right">
-                      <span className="block text-xs font-bold text-white/40 uppercase tracking-widest mb-1">Total Amount</span>
-                      <span className="text-xl font-black text-white">₹{order.amount}</span>
+                      <span className="block text-xs font-bold text-white/40 uppercase tracking-widest mb-1">Advance Paid</span>
+                      <span className="text-xl font-black text-white">₹{order.advancePaid}</span>
                     </div>
 
-                    {order.status === 'approved' && order.paymentStatus === 'pending' && (
-                      <button
-                        onClick={() => handlePayment(order)}
-                        disabled={payingOrderId === order.id}
-                        className="flex items-center space-x-2 px-6 py-3 bg-parrot text-black font-bold rounded-xl hover:bg-white transition-all shadow-[0_0_20px_rgba(167,252,0,0.2)]"
-                      >
-                        {payingOrderId === order.id ? (
-                          <Loader2 className="animate-spin" size={20} />
-                        ) : (
-                          <>
-                            <CreditCard size={18} />
-                            <span>Pay Advance</span>
-                          </>
-                        )}
-                      </button>
-                    )}
-                    
-                    {order.paymentStatus !== 'pending' && (
-                      <div className="px-6 py-3 bg-white/10 text-white/40 font-bold rounded-xl cursor-default flex items-center space-x-2">
-                        <CheckCircle size={18} />
-                        <span>Paid</span>
-                      </div>
-                    )}
+                    <div className="text-right">
+                      <span className="block text-xs font-bold text-white/40 uppercase tracking-widest mb-1">Total Amount</span>
+                      <span className="text-xl font-black text-white/40">₹{order.amount}</span>
+                    </div>
                   </div>
                 </div>
               </motion.div>

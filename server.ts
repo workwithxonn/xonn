@@ -51,11 +51,17 @@ async function startServer() {
 
   // API Routes
   app.post("/api/admin/auth", (req, res) => {
-    const { password } = req.body;
-    const adminPassword = process.env.ADMIN_PASSWORD || "admin123"; // Default for demo
+    const { password, deviceId, trustDevice, deviceName } = req.body;
+    const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
 
     if (password === adminPassword) {
-      res.json({ success: true, token: "mock_admin_token" });
+      // In a real app, you'd generate a proper JWT
+      res.json({ 
+        success: true, 
+        token: "mock_admin_token",
+        deviceId: deviceId,
+        trustDevice: trustDevice
+      });
     } else {
       res.status(401).json({ success: false, error: "Invalid password" });
     }
@@ -69,10 +75,13 @@ async function startServer() {
 
     if (status === "approved") {
       subject = "Your Order has been Approved!";
-      text = `Great news! Your order #${orderId?.slice(-6)} has been approved. You can now proceed with the payment to start the project. \n\nCheck your status here: ${process.env.APP_URL}/status`;
+      text = `Great news! Your order #${orderId?.slice(-6)} has been approved. Work will begin shortly. \n\nCheck your status here: ${process.env.APP_URL}/status`;
     } else if (status === "rejected") {
       subject = "Order Update: Not Approved";
-      text = `We're sorry, but your order #${orderId?.slice(-6)} was not approved at this time. This could be due to budget constraints or project requirements. \n\nFeel free to submit a new request later.`;
+      text = `We're sorry, but your order #${orderId?.slice(-6)} was not approved at this time. Your advance payment will be refunded to your UPI ID. \n\nFeel free to submit a new request later.`;
+    } else if (status === "refunded") {
+      subject = "Refund Confirmation";
+      text = `Your payment for order #${orderId?.slice(-6)} has been refunded. Please check your UPI linked bank account. \n\nThank you for your patience.`;
     }
 
     try {

@@ -19,6 +19,8 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
   const [formData, setFormData] = useState({
     customerName: "",
     customerEmail: "",
+    customerPhone: "",
+    customerUpiId: "",
     channelName: "",
     niche: "",
     projectDetails: "",
@@ -50,39 +52,90 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
       );
   };
 
-  const handleSubmit = async () => {
+  const validateUpi = (upi: string) => {
+    return upi.includes("@") && upi.length > 3;
+  };
+
+  const handlePayment = async () => {
     if (!validateEmail(formData.customerEmail)) {
       toast.error("Please enter a valid email address.");
+      return;
+    }
+    if (!validateUpi(formData.customerUpiId)) {
+      toast.error("Please enter a valid UPI ID.");
       return;
     }
 
     setLoading(true);
     try {
-      const imageUrls = await uploadFiles();
+      const advanceAmount = Math.round(product.price * 0.5);
       
-      const orderData: Omit<Order, 'id'> = {
-        userId: formData.customerEmail,
-        customerName: formData.customerName,
-        customerEmail: formData.customerEmail,
-        channelName: formData.channelName,
-        niche: formData.niche,
-        projectDetails: formData.projectDetails,
-        budget: formData.budget,
-        referenceImages: imageUrls,
-        productId: product.id,
-        status: 'pending',
-        createdAt: serverTimestamp(),
-        amount: product.price,
-        advancePaid: 0,
-        paymentStatus: 'pending',
+      // Create Razorpay Order via backend
+      const response = await fetch("/api/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: advanceAmount }),
+      });
+
+      if (!response.ok) throw new Error("Failed to create payment order");
+      const rzpOrder = await response.json();
+
+      const options = {
+        key: localStorage.getItem("razorpay_key_id") || import.meta.env.VITE_RAZORPAY_KEY_ID,
+        amount: rzpOrder.amount,
+        currency: "INR",
+        name: "XONN",
+        description: `50% Advance for ${product.name}`,
+        order_id: rzpOrder.id,
+        handler: async (response: any) => {
+          try {
+            setLoading(true);
+            const imageUrls = await uploadFiles();
+            
+            const orderData: Omit<Order, 'id'> = {
+              userId: formData.customerEmail,
+              customerName: formData.customerName,
+              customerEmail: formData.customerEmail,
+              customerPhone: formData.customerPhone,
+              customerUpiId: formData.customerUpiId,
+              channelName: formData.channelName,
+              niche: formData.niche,
+              projectDetails: formData.projectDetails,
+              budget: formData.budget,
+              referenceImages: imageUrls,
+              productId: product.id,
+              status: 'pending',
+              createdAt: serverTimestamp(),
+              amount: product.price,
+              advancePaid: advanceAmount,
+              paymentStatus: 'paid',
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpayOrderId: response.razorpay_order_id,
+            };
+
+            await addDoc(collection(db, "orders"), orderData);
+            setStep(4);
+            toast.success("Payment successful! Order submitted for review.");
+          } catch (error) {
+            console.error("Order save error:", error);
+            toast.error("Payment successful but failed to save order. Please contact support.");
+          } finally {
+            setLoading(false);
+          }
+        },
+        prefill: {
+          name: formData.customerName,
+          email: formData.customerEmail,
+          contact: formData.customerPhone,
+        },
+        theme: { color: "#CCFF00" },
       };
 
-      await addDoc(collection(db, "orders"), orderData);
-      setStep(4);
-      toast.success("Order submitted for review!");
+      const rzp = new (window as any).Razorpay(options);
+      rzp.open();
     } catch (error) {
-      console.error("Order error:", error);
-      toast.error("Failed to submit order. Please try again.");
+      console.error("Payment error:", error);
+      toast.error("Failed to initiate payment. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -115,8 +168,8 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
             <h2 className="text-2xl font-black tracking-tighter">
               {step === 1 && "ORDER DETAILS"}
               {step === 2 && "PROJECT INFO"}
-              {step === 3 && "REVIEW"}
-              {step === 4 && "SUBMITTED"}
+              {step === 3 && "PAY ADVANCE"}
+              {step === 4 && "SUCCESS"}
             </h2>
           </div>
 
@@ -129,15 +182,27 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
                 exit={{ opacity: 0, x: -20 }}
                 className="space-y-4"
               >
-                <div>
-                  <label className="block text-xs font-bold text-white/40 uppercase mb-2">Full Name</label>
-                  <input
-                    type="text"
-                    value={formData.customerName}
-                    onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
-                    placeholder="Your Name"
-                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/20 focus:border-parrot focus:ring-1 focus:ring-parrot outline-none transition-all"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-white/40 uppercase mb-2">Full Name</label>
+                    <input
+                      type="text"
+                      value={formData.customerName}
+                      onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
+                      placeholder="Your Name"
+                      className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/20 focus:border-parrot focus:ring-1 focus:ring-parrot outline-none transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-white/40 uppercase mb-2">Phone Number</label>
+                    <input
+                      type="tel"
+                      value={formData.customerPhone}
+                      onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
+                      placeholder="+91 00000 00000"
+                      className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/20 focus:border-parrot focus:ring-1 focus:ring-parrot outline-none transition-all"
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-white/40 uppercase mb-2">Email Address</label>
@@ -150,18 +215,18 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-white/40 uppercase mb-2">Channel Name (Optional)</label>
+                  <label className="block text-xs font-bold text-white/40 uppercase mb-2 text-parrot">UPI ID (For Refunds)</label>
                   <input
                     type="text"
-                    value={formData.channelName}
-                    onChange={(e) => setFormData({ ...formData, channelName: e.target.value })}
-                    placeholder="e.g. MrBeast"
-                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/20 focus:border-parrot focus:ring-1 focus:ring-parrot outline-none transition-all"
+                    value={formData.customerUpiId}
+                    onChange={(e) => setFormData({ ...formData, customerUpiId: e.target.value })}
+                    placeholder="username@upi"
+                    className="w-full px-4 py-3 bg-white/5 border border-parrot/30 rounded-xl text-white placeholder:text-white/20 focus:border-parrot focus:ring-1 focus:ring-parrot outline-none transition-all"
                   />
                 </div>
                 <button
                   onClick={nextStep}
-                  disabled={!formData.customerName || !validateEmail(formData.customerEmail)}
+                  disabled={!formData.customerName || !validateEmail(formData.customerEmail) || !validateUpi(formData.customerUpiId) || !formData.customerPhone}
                   className="w-full py-4 bg-parrot text-black font-bold rounded-xl hover:bg-white transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
                 >
                   <span>Continue</span>
@@ -188,15 +253,27 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
                     className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/20 focus:border-parrot focus:ring-1 focus:ring-parrot outline-none transition-all resize-none"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-white/40 uppercase mb-2">Budget (Optional)</label>
-                  <input
-                    type="text"
-                    value={formData.budget}
-                    onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
-                    placeholder="e.g. ₹500 - ₹1000"
-                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/20 focus:border-parrot focus:ring-1 focus:ring-parrot outline-none transition-all"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-white/40 uppercase mb-2">Channel Name</label>
+                    <input
+                      type="text"
+                      value={formData.channelName}
+                      onChange={(e) => setFormData({ ...formData, channelName: e.target.value })}
+                      placeholder="e.g. MrBeast"
+                      className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/20 focus:border-parrot focus:ring-1 focus:ring-parrot outline-none transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-white/40 uppercase mb-2">Budget</label>
+                    <input
+                      type="text"
+                      value={formData.budget}
+                      onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
+                      placeholder="e.g. ₹1000"
+                      className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/20 focus:border-parrot focus:ring-1 focus:ring-parrot outline-none transition-all"
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-white/40 uppercase mb-2">Reference Images</label>
@@ -228,7 +305,7 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
                     disabled={!formData.projectDetails}
                     className="flex-[2] py-4 bg-parrot text-black font-bold rounded-xl hover:bg-white transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
                   >
-                    <span>Review Order</span>
+                    <span>Review & Pay</span>
                     <ChevronRight size={18} />
                   </button>
                 </div>
@@ -254,16 +331,19 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
                   </div>
                   <div className="h-px bg-white/10 my-4" />
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-white/40">Advance (After Approval)</span>
+                    <span className="text-sm text-white/40">50% Advance Now</span>
                     <span className="text-xl font-black text-parrot">₹{Math.round(product.price * 0.5)}</span>
                   </div>
                 </div>
 
-                <div className="text-center py-4">
-                  <div className="w-12 h-12 bg-parrot/10 rounded-full flex items-center justify-center mx-auto mb-2">
-                    <Clock size={24} className="text-parrot" />
+                <div className="p-4 bg-parrot/5 rounded-xl border border-parrot/20">
+                  <div className="flex items-start space-x-3">
+                    <CreditCard className="text-parrot mt-1" size={18} />
+                    <div>
+                      <p className="text-sm font-bold text-white">Secure Payment</p>
+                      <p className="text-xs text-white/40">Pay 50% advance to submit your order for review. Refundable if rejected.</p>
+                    </div>
                   </div>
-                  <p className="text-xs text-white/40">Our team will review your requirements and budget before approval.</p>
                 </div>
 
                 <div className="flex space-x-4">
@@ -275,7 +355,7 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
                     <span>Back</span>
                   </button>
                   <button
-                    onClick={handleSubmit}
+                    onClick={handlePayment}
                     disabled={loading}
                     className="flex-[2] py-4 bg-parrot text-black font-bold rounded-xl hover:bg-white transition-all flex items-center justify-center space-x-2"
                   >
@@ -283,8 +363,8 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
                       <Loader2 size={20} className="animate-spin" />
                     ) : (
                       <>
-                        <span>Submit for Review</span>
-                        <ChevronRight size={18} />
+                        <CreditCard size={18} />
+                        <span>Pay & Submit</span>
                       </>
                     )}
                   </button>
@@ -300,9 +380,9 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
                 className="text-center py-12"
               >
                 <div className="w-20 h-20 bg-parrot/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <Clock size={48} className="text-parrot" />
+                  <CheckCircle2 size={48} className="text-parrot" />
                 </div>
-                <h3 className="text-3xl font-black tracking-tighter mb-4 text-parrot">SUBMITTED.</h3>
+                <h3 className="text-3xl font-black tracking-tighter mb-4 text-parrot">PAYMENT SUCCESS!</h3>
                 <p className="text-white/60 mb-8">
                   Your order has been submitted for review. We'll notify you at 
                   <span className="text-white font-bold ml-1">{formData.customerEmail}</span> once it's approved.
