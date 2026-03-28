@@ -1,38 +1,51 @@
 import { motion } from "framer-motion";
 import { Instagram, Twitter, Youtube, ArrowUpRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useRef } from "react";
+import { useRef, useEffect } from "react";
 
 export default function Footer() {
   const navigate = useNavigate();
   const tapCount = useRef(0);
   const startTime = useRef(0);
 
-  const handleAdminTrigger = () => {
-    const now = Date.now();
-    const timeElapsedSinceStart = now - startTime.current;
-
-    // Reset if time exceeds 0.8 seconds or if it's the first tap
-    if (tapCount.current === 0 || timeElapsedSinceStart > 800) {
-      console.log("Admin Trigger: Timer started/reset.");
-      tapCount.current = 1;
-      startTime.current = now;
-    } else {
-      tapCount.current += 1;
-      console.log(`Admin Trigger: Tap ${tapCount.current} detected. Time since start: ${now - startTime.current}ms`);
+  useEffect(() => {
+    const trigger = document.getElementById("admin-trigger-logo");
+    if (!trigger) {
+      console.error("Admin Trigger: Element #admin-trigger-logo not found in DOM.");
+      return;
     }
 
-    if (tapCount.current === 5) {
-      const totalTime = now - startTime.current;
-      if (totalTime <= 800) {
-        console.log(`Admin Trigger: SUCCESS! 5 taps in ${totalTime}ms. Redirecting to admin portal...`);
-        navigate("/xon-admin-portal");
+    console.log("Admin Trigger: Production script active. Element found.");
+
+    const handleTrigger = (e: MouseEvent) => {
+      const now = Date.now();
+      const timeElapsedSinceStart = now - startTime.current;
+
+      // Reset if time exceeds 0.8 seconds or if it's the first tap
+      if (tapCount.current === 0 || timeElapsedSinceStart > 800) {
+        console.log("Admin Trigger: Timer started/reset.");
+        tapCount.current = 1;
+        startTime.current = now;
       } else {
-        console.log(`Admin Trigger: FAILED. 5 taps took ${totalTime}ms (limit 800ms).`);
+        tapCount.current += 1;
+        console.log(`Admin Trigger: Tap ${tapCount.current} detected. Time since start: ${now - startTime.current}ms`);
       }
-      tapCount.current = 0; // Reset after attempt
-    }
-  };
+
+      if (tapCount.current === 5) {
+        const totalTime = now - startTime.current;
+        if (totalTime <= 800) {
+          console.log(`Admin Trigger: SUCCESS! 5 taps in ${totalTime}ms. Redirecting...`);
+          navigate("/xon-admin-portal");
+        } else {
+          console.log(`Admin Trigger: FAILED. 5 taps took ${totalTime}ms (limit 800ms).`);
+        }
+        tapCount.current = 0; // Reset after attempt
+      }
+    };
+
+    trigger.addEventListener("click", handleTrigger);
+    return () => trigger.removeEventListener("click", handleTrigger);
+  }, [navigate]);
 
   return (
     <footer className="bg-black border-t border-white/10 pt-24 pb-12">
@@ -73,7 +86,7 @@ export default function Footer() {
         
         <div className="flex flex-col md:flex-row items-center justify-between pt-12 border-t border-white/10">
           <span 
-            onClick={handleAdminTrigger}
+            id="admin-trigger-logo"
             className="text-2xl font-bold tracking-tighter text-parrot mb-4 md:mb-0 cursor-default select-none relative z-50"
           >
             XONN
