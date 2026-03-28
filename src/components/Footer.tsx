@@ -1,7 +1,32 @@
 import { motion } from "framer-motion";
 import { Instagram, Twitter, Youtube, ArrowUpRight } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useRef } from "react";
 
 export default function Footer() {
+  const navigate = useNavigate();
+  const tapCount = useRef(0);
+  const startTime = useRef(0);
+
+  const handleAdminTrigger = () => {
+    const now = Date.now();
+    
+    // If it's the first tap or the 0.8s window has passed, reset
+    if (tapCount.current === 0 || now - startTime.current > 800) {
+      tapCount.current = 1;
+      startTime.current = now;
+    } else {
+      tapCount.current += 1;
+    }
+
+    if (tapCount.current === 5) {
+      if (now - startTime.current <= 800) {
+        navigate("/xon-admin-portal");
+      }
+      tapCount.current = 0; // Reset after trigger
+    }
+  };
+
   return (
     <footer className="bg-black border-t border-white/10 pt-24 pb-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -40,7 +65,12 @@ export default function Footer() {
         </div>
         
         <div className="flex flex-col md:flex-row items-center justify-between pt-12 border-t border-white/10">
-          <span className="text-2xl font-bold tracking-tighter text-parrot mb-4 md:mb-0">XONN</span>
+          <span 
+            onClick={handleAdminTrigger}
+            className="text-2xl font-bold tracking-tighter text-parrot mb-4 md:mb-0 cursor-default select-none"
+          >
+            XONN
+          </span>
           <p className="text-sm text-white/40">© 2026 XONN. All rights reserved. Premium Visuals for Serious Creators.</p>
         </div>
       </div>
