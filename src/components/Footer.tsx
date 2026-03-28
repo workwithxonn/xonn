@@ -72,6 +72,7 @@ export default function Footer() {
               <ul className="space-y-2">
                 <li><a href="#products" className="text-white/60 hover:text-parrot transition-colors">Products</a></li>
                 <li><a href="#faq" className="text-white/60 hover:text-parrot transition-colors">FAQ</a></li>
+                <li><a href="/xon-admin-portal" className="text-white/20 hover:text-parrot transition-colors text-xs">Admin Access</a></li>
               </ul>
             </div>
             <div className="space-y-4">

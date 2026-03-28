@@ -106,15 +106,20 @@ async function startServer() {
       const adminData = adminDoc.data();
       const isValid = await bcrypt.compare(password, adminData?.password);
 
+      console.log("Admin Login Debug:");
+      console.log("- Entered Password (trimmed):", password);
+      console.log("- Stored Password Hash:", adminData?.password);
+      console.log("- Comparison Result:", isValid);
+
       if (!isValid) {
-        return res.status(401).json({ error: "Invalid password" });
+        return res.status(401).json({ error: "Incorrect Password" });
       }
 
       const token = jwt.sign({ role: "admin" }, JWT_SECRET, { expiresIn: "24h" });
       res.cookie("admin_token", token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
+        secure: true, // Required for SameSite=None
+        sameSite: "none", // Required for cross-origin iframe
         maxAge: 24 * 60 * 60 * 1000 // 24 hours
       });
 
@@ -178,6 +183,29 @@ async function startServer() {
     }
   });
 
+  app.get("/api/admin/orders", authenticateAdmin, async (req, res) => {
+    try {
+      const snapshot = await db.collection("orders").orderBy("createdAt", "desc").get();
+      const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      res.json(orders);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch orders" });
+    }
+  });
+
+  app.post("/api/admin/update-order-status", authenticateAdmin, async (req, res) => {
+    try {
+      const { orderId, status } = req.body;
+      await db.collection("orders").doc(orderId).update({
+        status,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update order status" });
+    }
+  });
+
   app.post("/api/admin/deliver-order", authenticateAdmin, async (req, res) => {
     try {
       const { orderId, deliveryLink, deliveryFileUrl } = req.body;
@@ -192,6 +220,43 @@ async function startServer() {
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to deliver order" });
+    }
+  });
+
+  app.post("/api/pay-balance", async (req, res) => {
+    try {
+      const { orderId, amount } = req.body;
+      if (!amount || isNaN(amount)) {
+        return res.status(400).json({ error: "Invalid amount" });
+      }
+
+      const razorpay = await getRazorpay();
+      const options = {
+        amount: Math.round(amount * 100),
+        currency: "INR",
+        receipt: `receipt_balance_${orderId}_${Date.now()}`,
+      };
+
+      const order = await razorpay.orders.create(options);
+      res.json(order);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to create balance order" });
+    }
+  });
+
+  app.post("/api/confirm-balance-payment", async (req, res) => {
+    try {
+      const { orderId, razorpayPaymentId } = req.body;
+      
+      await db.collection("orders").doc(orderId).update({
+        paymentStatus: "fully_paid",
+        razorpayBalancePaymentId: razorpayPaymentId,
+        fullyPaidAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to confirm balance payment" });
     }
   });
 

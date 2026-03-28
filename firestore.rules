@@ -72,11 +72,11 @@ service cloud.firestore {
              isValidEmail(data.customerEmail) &&
              data.projectDetails is string && data.projectDetails.size() > 0 && data.projectDetails.size() < 2000 &&
              data.productId is string &&
-             data.status in ['pending', 'processing', 'completed', 'cancelled'] &&
+             data.status in ['pending', 'approved', 'rejected', 'refunded', 'processing', 'completed', 'cancelled', 'delivered'] &&
              data.createdAt is timestamp &&
              data.amount is number && data.amount >= 0 &&
              data.advancePaid is number && data.advancePaid >= 0 &&
-             data.paymentStatus in ['pending', 'partial', 'full'] &&
+             data.paymentStatus in ['pending', 'advance_paid', 'fully_paid', 'refunded'] &&
              (!('razorpayPaymentId' in data) || data.razorpayPaymentId is string);
     }
 

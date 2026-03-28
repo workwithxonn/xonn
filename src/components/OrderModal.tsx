@@ -125,7 +125,7 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
               createdAt: serverTimestamp(),
               amount: product.price,
               advancePaid: advanceAmount,
-              paymentStatus: 'paid',
+              paymentStatus: 'advance_paid',
               razorpayPaymentId: response.razorpay_payment_id,
               razorpayOrderId: response.razorpay_order_id,
             };

@@ -44,29 +44,34 @@ export default function Admin() {
     verifyAuth();
   }, []);
 
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const ordersData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Order[];
-      setOrders(ordersData);
-      setLoading(false);
-    }, (error) => {
+  const fetchOrders = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/orders");
+      if (res.ok) {
+        const data = await res.json();
+        setOrders(data);
+      } else {
+        toast.error("Failed to fetch orders");
+      }
+    } catch (error) {
       console.error("Orders fetch error:", error);
       toast.error("Failed to fetch orders");
+    } finally {
       setLoading(false);
-    });
+    }
+  };
 
-    return () => unsubscribe();
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchOrders();
+    }
   }, [isAuthenticated]);
 
   const handleInitialSetup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password.trim().length < 6) {
+    const trimmedPassword = password.trim();
+    if (trimmedPassword.length < 6) {
       toast.error("Password must be at least 6 characters.");
       return;
     }
@@ -75,10 +80,11 @@ export default function Admin() {
       const res = await fetch("/api/admin/setup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: password.trim() })
+        body: JSON.stringify({ password: trimmedPassword })
       });
       if (res.ok) {
         setIsSetup(true);
+        localStorage.setItem("admin_password", trimmedPassword);
         setPassword("");
         toast.success("Admin password set successfully! Now you can log in.");
       } else {
@@ -94,20 +100,26 @@ export default function Admin() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    const trimmedPassword = password.trim();
+    console.log("Admin Login Attempt:");
+    console.log("- Entered Password:", trimmedPassword);
+    console.log("- LocalStorage Password:", localStorage.getItem("admin_password"));
+    
     setAuthLoading(true);
     try {
       const res = await fetch("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: password.trim() })
+        body: JSON.stringify({ password: trimmedPassword })
       });
       if (res.ok) {
         setIsAuthenticated(true);
+        localStorage.setItem("admin_password", trimmedPassword);
         setPassword("");
         toast.success("Welcome back, Admin!");
       } else {
         const data = await res.json();
-        toast.error(data.error || "Invalid password");
+        toast.error(data.error || "Incorrect Password");
       }
     } catch (error) {
       toast.error("Login failed");
@@ -178,6 +190,7 @@ export default function Admin() {
         });
         toast.success("Order delivered successfully!");
         setDeliveryData(null);
+        fetchOrders();
       } else {
         toast.error("Failed to deliver order");
       }
@@ -188,26 +201,30 @@ export default function Admin() {
 
   const updateStatus = async (order: Order, status: OrderStatus) => {
     try {
-      const updateData: any = { status };
-      if (status === 'refunded') {
-        updateData.paymentStatus = 'refunded';
-      }
+      const res = await fetch("/api/admin/update-order-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, status })
+      });
       
-      await updateDoc(doc(db, "orders", order.id!), updateData);
-      
-      if (status === 'approved' || status === 'rejected' || status === 'refunded') {
-        await fetch('/api/notify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            email: order.customerEmail, 
-            status, 
-            orderId: order.id 
-          })
-        });
-        toast.success(`Order ${status} and notification sent!`);
+      if (res.ok) {
+        if (status === 'approved' || status === 'rejected' || status === 'refunded') {
+          await fetch('/api/notify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              email: order.customerEmail, 
+              status, 
+              orderId: order.id 
+            })
+          });
+          toast.success(`Order ${status} and notification sent!`);
+        } else {
+          toast.success(`Order status updated to ${status}`);
+        }
+        fetchOrders();
       } else {
-        toast.success(`Order status updated to ${status}`);
+        toast.error("Failed to update status");
       }
     } catch (error) {
       console.error("Update status error:", error);
@@ -394,11 +411,12 @@ export default function Admin() {
                       {order.status}
                     </span>
                     <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                      order.paymentStatus === 'paid' ? 'bg-green-500/20 text-green-500' :
+                      order.paymentStatus === 'fully_paid' ? 'bg-green-500/20 text-green-500' :
+                      order.paymentStatus === 'advance_paid' ? 'bg-blue-500/20 text-blue-500' :
                       order.paymentStatus === 'refunded' ? 'bg-orange-500/20 text-orange-500' :
                       'bg-white/10 text-white/40'
                     }`}>
-                      {order.paymentStatus}
+                      {order.paymentStatus.replace('_', ' ')}
                     </span>
                   </div>
                   <h3 className="text-xl font-bold">{order.customerName} <span className="text-white/40 font-normal">({order.channelName || "Direct"})</span></h3>

@@ -28,7 +28,7 @@ export interface Order {
   createdAt: any; // Firestore Timestamp
   amount: number;
   advancePaid: number;
-  paymentStatus: 'pending' | 'paid' | 'refunded';
+  paymentStatus: 'pending' | 'advance_paid' | 'fully_paid' | 'refunded';
   razorpayPaymentId?: string;
   razorpayOrderId?: string;
   deliveryLink?: string;
