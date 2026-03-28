@@ -10,6 +10,7 @@ export default function Admin() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [razorpayKey, setRazorpayKey] = useState(localStorage.getItem('razorpay_key_id') || "");
+  const [adminPassword, setAdminPassword] = useState(localStorage.getItem('admin_password') || "");
   const [showSettings, setShowSettings] = useState(false);
   const [showDeviceManager, setShowDeviceManager] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(sessionStorage.getItem('admin_token') === 'mock_admin_token');
@@ -70,26 +71,33 @@ export default function Admin() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthLoading(true);
-    try {
-      const response = await fetch('/api/admin/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password })
-      });
-      const data = await response.json();
-      if (data.success) {
-        setIsAuthenticated(true);
-        sessionStorage.setItem('admin_token', data.token);
-        
-        // Handle device trust
-        let currentDeviceId = deviceId;
-        if (!currentDeviceId) {
-          currentDeviceId = crypto.randomUUID();
-          setDeviceId(currentDeviceId);
-          localStorage.setItem('admin_device_id', currentDeviceId);
-        }
+    
+    const storedPassword = localStorage.getItem('admin_password');
+    const enteredPassword = password.trim();
+    
+    console.log("Stored Password:", storedPassword);
+    console.log("Entered Password:", enteredPassword);
 
-        if (trustDevice) {
+    if (!storedPassword) {
+      toast.error("Admin password not set");
+      setAuthLoading(false);
+      return;
+    }
+
+    if (enteredPassword === storedPassword) {
+      setIsAuthenticated(true);
+      sessionStorage.setItem('admin_token', 'mock_admin_token');
+      
+      // Handle device trust
+      let currentDeviceId = deviceId;
+      if (!currentDeviceId) {
+        currentDeviceId = crypto.randomUUID();
+        setDeviceId(currentDeviceId);
+        localStorage.setItem('admin_device_id', currentDeviceId);
+      }
+
+      if (trustDevice) {
+        try {
           await setDoc(doc(db, "admin_devices", currentDeviceId), {
             id: currentDeviceId,
             name: `${navigator.platform} - ${navigator.vendor || 'Unknown Browser'}`,
@@ -99,25 +107,27 @@ export default function Admin() {
           });
           setIsTrustedDevice(true);
           toast.success("Welcome back, Admin! This device is now trusted.");
-        } else {
-          toast.success("Welcome back, Admin!");
+        } catch (error) {
+          console.error("Error saving device trust:", error);
         }
-        
-        // Update last used for existing trusted device
-        if (isTrustedDevice) {
+      } else {
+        toast.success("Welcome back, Admin!");
+      }
+      
+      // Update last used for existing trusted device
+      if (isTrustedDevice) {
+        try {
           await updateDoc(doc(db, "admin_devices", currentDeviceId), {
             lastUsed: serverTimestamp()
           });
+        } catch (error) {
+          console.error("Error updating device last used:", error);
         }
-
-      } else {
-        toast.error("Invalid password.");
       }
-    } catch (error) {
-      toast.error("Authentication failed.");
-    } finally {
-      setAuthLoading(false);
+    } else {
+      toast.error("Invalid password.");
     }
+    setAuthLoading(false);
   };
 
   const logout = async () => {
@@ -169,7 +179,8 @@ export default function Admin() {
 
   const saveSettings = () => {
     localStorage.setItem('razorpay_key_id', razorpayKey);
-    toast.success("Razorpay Key ID saved successfully.");
+    localStorage.setItem('admin_password', adminPassword);
+    toast.success("Settings saved successfully.");
     setShowSettings(false);
   };
 
@@ -321,24 +332,36 @@ export default function Admin() {
             <Key className="text-parrot" size={24} />
             <h2 className="text-xl font-black tracking-tighter uppercase">Payment Settings</h2>
           </div>
-          <div className="max-w-md">
-            <label className="block text-xs font-bold text-white/40 uppercase tracking-widest mb-2">Razorpay Key ID</label>
-            <div className="flex space-x-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="max-w-md">
+              <label className="block text-xs font-bold text-white/40 uppercase tracking-widest mb-2">Razorpay Key ID</label>
               <input 
                 type="password"
                 value={razorpayKey}
                 onChange={(e) => setRazorpayKey(e.target.value)}
                 placeholder="rzp_test_..."
-                className="flex-grow px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/20 focus:border-parrot focus:ring-1 focus:ring-parrot outline-none transition-all"
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/20 focus:border-parrot focus:ring-1 focus:ring-parrot outline-none transition-all mb-4"
               />
-              <button 
-                onClick={saveSettings}
-                className="px-6 py-3 bg-parrot text-black font-bold rounded-xl hover:bg-white transition-all"
-              >
-                Save
-              </button>
             </div>
-            <p className="mt-3 text-xs text-white/40 italic">This key is stored locally in your browser and used for processing payments.</p>
+            <div className="max-w-md">
+              <label className="block text-xs font-bold text-white/40 uppercase tracking-widest mb-2">Admin Password</label>
+              <input 
+                type="password"
+                value={adminPassword}
+                onChange={(e) => setAdminPassword(e.target.value)}
+                placeholder="Set Admin Password"
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/20 focus:border-parrot focus:ring-1 focus:ring-parrot outline-none transition-all mb-4"
+              />
+            </div>
+          </div>
+          <div className="mt-4">
+            <button 
+              onClick={saveSettings}
+              className="px-8 py-3 bg-parrot text-black font-bold rounded-xl hover:bg-white transition-all"
+            >
+              Save Settings
+            </button>
+            <p className="mt-3 text-xs text-white/40 italic">These settings are stored locally in your browser.</p>
           </div>
         </motion.div>
       )}

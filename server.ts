@@ -51,20 +51,16 @@ async function startServer() {
 
   // API Routes
   app.post("/api/admin/auth", (req, res) => {
-    const { password, deviceId, trustDevice, deviceName } = req.body;
-    const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
-
-    if (password === adminPassword) {
-      // In a real app, you'd generate a proper JWT
-      res.json({ 
-        success: true, 
-        token: "mock_admin_token",
-        deviceId: deviceId,
-        trustDevice: trustDevice
-      });
-    } else {
-      res.status(401).json({ success: false, error: "Invalid password" });
-    }
+    // Authentication is now handled client-side using localStorage as per user request.
+    // This endpoint can be used to issue a token if needed, but the password check is removed.
+    const { deviceId, trustDevice } = req.body;
+    
+    res.json({ 
+      success: true, 
+      token: "mock_admin_token",
+      deviceId: deviceId,
+      trustDevice: trustDevice
+    });
   });
 
   app.post("/api/notify", async (req, res) => {
