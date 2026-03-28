@@ -49,14 +49,8 @@ export default function Hero() {
               href="#products"
               className="group flex items-center space-x-2 px-8 py-4 bg-parrot text-black font-bold rounded-full hover:bg-white transition-all transform hover:scale-105"
             >
-              <span>Buy Thumbnail</span>
+              <span>Order Now</span>
               <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
-            </a>
-            <a
-              href="#portfolio"
-              className="px-8 py-4 bg-white/5 border border-white/10 text-white font-bold rounded-full hover:bg-white/10 transition-all"
-            >
-              View Packs
             </a>
           </motion.div>
         </div>

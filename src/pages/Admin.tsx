@@ -1,20 +1,18 @@
 import { useEffect, useState } from "react";
-import { useAuth } from "../context/AuthContext";
 import { db } from "../firebase";
 import { collection, query, orderBy, onSnapshot, updateDoc, doc } from "firebase/firestore";
 import { Order, OrderStatus } from "../types";
 import { motion } from "framer-motion";
-import { Loader2, ExternalLink, CheckCircle, Clock, XCircle, AlertCircle } from "lucide-react";
+import { Loader2, ExternalLink, CheckCircle, Clock, XCircle, Settings, Key } from "lucide-react";
 import { toast } from "sonner";
 
 export default function Admin() {
-  const { profile, loading: authLoading } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [razorpayKey, setRazorpayKey] = useState(localStorage.getItem('razorpay_key_id') || "");
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
-    if (!profile || profile.role !== 'admin') return;
-
     const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const ordersData = snapshot.docs.map(doc => ({
@@ -30,7 +28,13 @@ export default function Admin() {
     });
 
     return () => unsubscribe();
-  }, [profile]);
+  }, []);
+
+  const saveSettings = () => {
+    localStorage.setItem('razorpay_key_id', razorpayKey);
+    toast.success("Razorpay Key ID saved successfully.");
+    setShowSettings(false);
+  };
 
   const updateStatus = async (orderId: string, status: OrderStatus) => {
     try {
@@ -42,30 +46,58 @@ export default function Admin() {
     }
   };
 
-  if (authLoading) return (
-    <div className="min-h-screen flex items-center justify-center">
-      <Loader2 className="animate-spin text-parrot" size={48} />
-    </div>
-  );
-
-  if (!profile || profile.role !== 'admin') {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-4">
-        <AlertCircle size={64} className="text-red-500 mb-4" />
-        <h1 className="text-3xl font-black tracking-tighter mb-2">ACCESS DENIED.</h1>
-        <p className="text-white/60">You do not have permission to view this page.</p>
-      </div>
-    );
-  }
-
   return (
     <div className="pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-12">
-        <h1 className="text-4xl font-black tracking-tighter">ADMIN <span className="text-parrot">DASHBOARD.</span></h1>
-        <div className="px-4 py-2 bg-white/5 border border-white/10 rounded-full text-sm font-bold">
-          {orders.length} Total Orders
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
+        <div>
+          <h1 className="text-4xl font-black tracking-tighter uppercase">ADMIN <span className="text-parrot">DASHBOARD.</span></h1>
+          <p className="text-white/40 text-sm mt-1">Manage orders and system settings.</p>
+        </div>
+        <div className="flex items-center space-x-4">
+          <button 
+            onClick={() => setShowSettings(!showSettings)}
+            className="flex items-center space-x-2 px-6 py-3 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all font-bold"
+          >
+            <Settings size={20} className={showSettings ? "text-parrot" : "text-white"} />
+            <span>Settings</span>
+          </button>
+          <div className="px-6 py-3 bg-parrot/10 border border-parrot/20 rounded-2xl text-sm font-black text-parrot uppercase tracking-widest">
+            {orders.length} Orders
+          </div>
         </div>
       </div>
+
+      {showSettings && (
+        <motion.div 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-12 p-8 bg-zinc-900 border border-parrot/20 rounded-3xl"
+        >
+          <div className="flex items-center space-x-3 mb-6">
+            <Key className="text-parrot" size={24} />
+            <h2 className="text-xl font-black tracking-tighter uppercase">Payment Settings</h2>
+          </div>
+          <div className="max-w-md">
+            <label className="block text-xs font-bold text-white/40 uppercase tracking-widest mb-2">Razorpay Key ID</label>
+            <div className="flex space-x-4">
+              <input 
+                type="password"
+                value={razorpayKey}
+                onChange={(e) => setRazorpayKey(e.target.value)}
+                placeholder="rzp_test_..."
+                className="flex-grow px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/20 focus:border-parrot focus:ring-1 focus:ring-parrot outline-none transition-all"
+              />
+              <button 
+                onClick={saveSettings}
+                className="px-6 py-3 bg-parrot text-black font-bold rounded-xl hover:bg-white transition-all"
+              >
+                Save
+              </button>
+            </div>
+            <p className="mt-3 text-xs text-white/40 italic">This key is stored locally in your browser and used for processing payments.</p>
+          </div>
+        </motion.div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
@@ -78,7 +110,7 @@ export default function Admin() {
               key={order.id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="p-6 bg-white/5 border border-white/10 rounded-3xl overflow-hidden"
+              className="p-6 bg-white/5 border border-white/10 rounded-3xl overflow-hidden hover:border-white/20 transition-colors"
             >
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                 <div className="space-y-2">
@@ -93,7 +125,7 @@ export default function Admin() {
                       {order.status}
                     </span>
                   </div>
-                  <h3 className="text-xl font-bold">{order.channelName} <span className="text-white/40 font-normal">({order.niche})</span></h3>
+                  <h3 className="text-xl font-bold">{order.channelName || "Direct Order"} <span className="text-white/40 font-normal">({order.niche || "GFX"})</span></h3>
                   <p className="text-sm text-white/60">{order.customerEmail}</p>
                 </div>
 
@@ -131,9 +163,9 @@ export default function Admin() {
 
               <div className="mt-6 pt-6 border-t border-white/5 grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div>
-                  <h4 className="text-xs font-bold text-white/40 uppercase tracking-widest mb-3">Thumbnail Text</h4>
+                  <h4 className="text-xs font-bold text-white/40 uppercase tracking-widest mb-3">Project Details</h4>
                   <p className="text-sm text-white/80 bg-white/5 p-4 rounded-xl border border-white/5 italic">
-                    "{order.text || "No text provided"}"
+                    "{order.projectDetails || "No details provided"}"
                   </p>
                 </div>
                 <div>

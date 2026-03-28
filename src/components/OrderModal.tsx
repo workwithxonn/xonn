@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, ChevronRight, ChevronLeft, Upload, CheckCircle2, Loader2, CreditCard } from "lucide-react";
 import { Product, Order } from "../types";
-import { useAuth } from "../context/AuthContext";
 import { db, storage } from "../firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -14,24 +13,17 @@ interface OrderModalProps {
 }
 
 export default function OrderModal({ product, onClose }: OrderModalProps) {
-  const { user, login } = useAuth();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [formData, setFormData] = useState({
     customerName: "",
-    customerEmail: user?.email || "",
+    customerEmail: "",
     channelName: "",
     niche: "",
     projectDetails: "",
     budget: "",
   });
-
-  React.useEffect(() => {
-    if (user?.email && !formData.customerEmail) {
-      setFormData(prev => ({ ...prev, customerEmail: user.email || "" }));
-    }
-  }, [user]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -42,7 +34,7 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
   const uploadFiles = async () => {
     const urls = [];
     for (const file of files) {
-      const storageRef = ref(storage, `orders/${user?.uid}/${Date.now()}_${file.name}`);
+      const storageRef = ref(storage, `orders/${formData.customerEmail}/${Date.now()}_${file.name}`);
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
       urls.push(url);
@@ -50,41 +42,39 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
     return urls;
   };
 
+  const validateEmail = (email: string) => {
+    return String(email)
+      .toLowerCase()
+      .match(
+        /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/
+      );
+  };
+
   const handlePayment = async () => {
-    if (!user) {
-      toast.error("Please login to place an order");
-      login();
+    if (!validateEmail(formData.customerEmail)) {
+      toast.error("Please enter a valid email address.");
       return;
     }
 
     setLoading(true);
     try {
-      const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID;
+      const razorpayKey = localStorage.getItem('razorpay_key_id') || import.meta.env.VITE_RAZORPAY_KEY_ID;
       if (!razorpayKey) {
-        toast.error("Razorpay Key ID is missing. Please configure it in settings.");
+        toast.error("Razorpay Key ID is missing. Please configure it in admin settings.");
         setLoading(false);
         return;
       }
 
       const advanceAmount = Math.round(product.price * 0.5);
       
-      // Create Razorpay order on backend
-      const response = await fetch('/api/create-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: advanceAmount }),
-      });
-
-      if (!response.ok) throw new Error('Failed to create order');
-      const order = await response.json();
-
+      // For demo purposes, we'll simulate the order creation if backend is not available
+      // In a real app, this should be a server-side call
       const options = {
         key: razorpayKey,
-        amount: order.amount,
+        amount: advanceAmount * 100, // Razorpay expects amount in paise
         currency: "INR",
         name: "XONN",
         description: `Advance Payment for ${product.name}`,
-        order_id: order.id,
         handler: async (response: any) => {
           // Payment successful
           await finalizeOrder(response.razorpay_payment_id, advanceAmount);
@@ -120,7 +110,7 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
       const imageUrls = await uploadFiles();
       
       const orderData: Order = {
-        userId: user!.uid,
+        userId: formData.customerEmail, // Using email as userId since auth is removed
         customerName: formData.customerName,
         customerEmail: formData.customerEmail,
         channelName: formData.channelName,
@@ -221,7 +211,7 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
                 </div>
                 <button
                   onClick={nextStep}
-                  disabled={!formData.customerName || !formData.customerEmail}
+                  disabled={!formData.customerName || !validateEmail(formData.customerEmail)}
                   className="w-full py-4 bg-parrot text-black font-bold rounded-xl hover:bg-white transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
                 >
                   <span>Continue</span>
