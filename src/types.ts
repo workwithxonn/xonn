@@ -1,5 +1,5 @@
 export type ProductType = 'thumbnail' | 'gfx' | 'kit';
-export type OrderStatus = 'pending' | 'approved' | 'rejected' | 'refunded' | 'processing' | 'completed' | 'cancelled';
+export type OrderStatus = 'pending' | 'approved' | 'rejected' | 'refunded' | 'processing' | 'completed' | 'cancelled' | 'delivered';
 
 export interface Product {
   id: string;
@@ -31,6 +31,9 @@ export interface Order {
   paymentStatus: 'pending' | 'paid' | 'refunded';
   razorpayPaymentId?: string;
   razorpayOrderId?: string;
+  deliveryLink?: string;
+  deliveryFileUrl?: string;
+  deliveredAt?: any;
 }
 
 export interface AdminDevice {

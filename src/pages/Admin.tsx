@@ -9,54 +9,40 @@ import { toast } from "sonner";
 export default function Admin() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-  const [razorpayKey, setRazorpayKey] = useState("");
-  const [razorpaySecret, setRazorpaySecret] = useState("");
-  const [adminPassword, setAdminPassword] = useState(localStorage.getItem('admin_password') || "");
-  const [hasPasswordSet, setHasPasswordSet] = useState(!!localStorage.getItem('admin_password'));
-  const [showSettings, setShowSettings] = useState(false);
-  const [showDeviceManager, setShowDeviceManager] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(sessionStorage.getItem('admin_token') === 'mock_admin_token');
+  const [isSetup, setIsSetup] = useState<boolean | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState("");
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
-  const [trustDevice, setTrustDevice] = useState(false);
-  const [isTrustedDevice, setIsTrustedDevice] = useState(false);
-  const [trustedDevices, setTrustedDevices] = useState<AdminDevice[]>([]);
-  const [deviceId, setDeviceId] = useState(localStorage.getItem('admin_device_id') || "");
+  const [showSettings, setShowSettings] = useState(false);
+  const [deliveryData, setDeliveryData] = useState<{ orderId: string; link: string; fileUrl: string } | null>(null);
 
   useEffect(() => {
-    const fetchSettings = async () => {
+    const checkSetup = async () => {
       try {
-        const settingsDoc = await getDoc(doc(db, "settings", "razorpay"));
-        if (settingsDoc.exists()) {
-          const data = settingsDoc.data();
-          setRazorpayKey(data.keyId || "");
-          setRazorpaySecret(data.keySecret || "");
-        } else {
-          // Fallback to localStorage for migration
-          const localKey = localStorage.getItem('razorpay_key_id');
-          if (localKey) setRazorpayKey(localKey);
-        }
+        const res = await fetch("/api/admin/check-setup");
+        const data = await res.json();
+        setIsSetup(data.isSetup);
       } catch (error) {
-        console.error("Error fetching settings:", error);
+        console.error("Setup check error:", error);
       }
     };
-    if (isAuthenticated) fetchSettings();
-  }, [isAuthenticated]);
 
-  useEffect(() => {
-    const checkTrust = async () => {
-      if (!deviceId) return;
+    const verifyAuth = async () => {
       try {
-        const deviceDoc = await getDoc(doc(db, "admin_devices", deviceId));
-        if (deviceDoc.exists() && deviceDoc.data().isTrusted) {
-          setIsTrustedDevice(true);
+        const res = await fetch("/api/admin/verify");
+        if (res.ok) {
+          setIsAuthenticated(true);
         }
       } catch (error) {
-        console.error("Device trust check error:", error);
+        console.error("Auth verification error:", error);
       }
     };
-    checkTrust();
-  }, [deviceId]);
+
+    checkSetup();
+    verifyAuth();
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -75,171 +61,128 @@ export default function Admin() {
       setLoading(false);
     });
 
-    const devicesQ = query(collection(db, "admin_devices"), orderBy("lastUsed", "desc"));
-    const unsubscribeDevices = onSnapshot(devicesQ, (snapshot) => {
-      const devicesData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as AdminDevice[];
-      setTrustedDevices(devicesData);
-    });
-
-    return () => {
-      unsubscribe();
-      unsubscribeDevices();
-    };
+    return () => unsubscribe();
   }, [isAuthenticated]);
 
-  const handleInitialSetup = (e: React.FormEvent) => {
+  const handleInitialSetup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password.trim().length < 4) {
-      toast.error("Password must be at least 4 characters.");
+    if (password.trim().length < 6) {
+      toast.error("Password must be at least 6 characters.");
       return;
     }
-    localStorage.setItem('admin_password', password.trim());
-    setAdminPassword(password.trim());
-    setHasPasswordSet(true);
-    setPassword("");
-    toast.success("Admin password set successfully! Now you can log in.");
+    setAuthLoading(true);
+    try {
+      const res = await fetch("/api/admin/setup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: password.trim() })
+      });
+      if (res.ok) {
+        setIsSetup(true);
+        setPassword("");
+        toast.success("Admin password set successfully! Now you can log in.");
+      } else {
+        const data = await res.json();
+        toast.error(data.error || "Setup failed");
+      }
+    } catch (error) {
+      toast.error("Setup failed");
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthLoading(true);
-    
-    const storedPassword = localStorage.getItem('admin_password');
-    const enteredPassword = password.trim();
-    
-    console.log("Stored Password:", storedPassword);
-    console.log("Entered Password:", enteredPassword);
-
-    if (!storedPassword) {
-      toast.error("Admin password not set");
+    try {
+      const res = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: password.trim() })
+      });
+      if (res.ok) {
+        setIsAuthenticated(true);
+        setPassword("");
+        toast.success("Welcome back, Admin!");
+      } else {
+        const data = await res.json();
+        toast.error(data.error || "Invalid password");
+      }
+    } catch (error) {
+      toast.error("Login failed");
+    } finally {
       setAuthLoading(false);
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword.length < 6) {
+      toast.error("New password must be at least 6 characters.");
       return;
     }
-
-    if (enteredPassword === storedPassword) {
-      setIsAuthenticated(true);
-      sessionStorage.setItem('admin_token', 'mock_admin_token');
-      
-      // Handle device trust
-      let currentDeviceId = deviceId;
-      if (!currentDeviceId) {
-        currentDeviceId = crypto.randomUUID();
-        setDeviceId(currentDeviceId);
-        localStorage.setItem('admin_device_id', currentDeviceId);
-      }
-
-      if (trustDevice) {
-        try {
-          await setDoc(doc(db, "admin_devices", currentDeviceId), {
-            id: currentDeviceId,
-            name: `${navigator.platform} - ${navigator.vendor || 'Unknown Browser'}`,
-            userAgent: navigator.userAgent,
-            lastUsed: serverTimestamp(),
-            isTrusted: true
-          });
-          setIsTrustedDevice(true);
-          toast.success("Welcome back, Admin! This device is now trusted.");
-        } catch (error) {
-          console.error("Error saving device trust:", error);
-        }
+    try {
+      const res = await fetch("/api/admin/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oldPassword, newPassword })
+      });
+      if (res.ok) {
+        setOldPassword("");
+        setNewPassword("");
+        toast.success("Password changed successfully!");
       } else {
-        toast.success("Welcome back, Admin!");
+        const data = await res.json();
+        toast.error(data.error || "Failed to change password");
       }
-      
-      // Update last used for existing trusted device
-      if (isTrustedDevice) {
-        try {
-          await updateDoc(doc(db, "admin_devices", currentDeviceId), {
-            lastUsed: serverTimestamp()
-          });
-        } catch (error) {
-          console.error("Error updating device last used:", error);
-        }
-      }
-    } else {
-      toast.error("Invalid password.");
+    } catch (error) {
+      toast.error("Failed to change password");
     }
-    setAuthLoading(false);
   };
 
   const logout = async () => {
-    sessionStorage.removeItem('admin_token');
-    setIsAuthenticated(false);
-    setPassword("");
-    toast.success("Logged out successfully.");
-  };
-
-  const logoutAndUntrust = async () => {
-    if (deviceId) {
-      await deleteDoc(doc(db, "admin_devices", deviceId));
-      localStorage.removeItem('admin_device_id');
-      setDeviceId("");
-      setIsTrustedDevice(false);
-    }
-    logout();
-  };
-
-  const removeDevice = async (id: string) => {
     try {
-      await deleteDoc(doc(db, "admin_devices", id));
-      if (id === deviceId) {
-        localStorage.removeItem('admin_device_id');
-        setDeviceId("");
-        setIsTrustedDevice(false);
-        logout();
-      }
-      toast.success("Device removed successfully.");
+      await fetch("/api/admin/logout", { method: "POST" });
+      setIsAuthenticated(false);
+      toast.success("Logged out successfully.");
     } catch (error) {
-      toast.error("Failed to remove device.");
+      toast.error("Logout failed");
     }
   };
 
-  const removeAllDevices = async () => {
-    try {
-      const snapshot = await getDocs(collection(db, "admin_devices"));
-      const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
-      await Promise.all(deletePromises);
-      localStorage.removeItem('admin_device_id');
-      setDeviceId("");
-      setIsTrustedDevice(false);
-      logout();
-      toast.success("All devices removed.");
-    } catch (error) {
-      toast.error("Failed to remove all devices.");
-    }
-  };
-
-  const saveSettings = async () => {
-    if (razorpayKey && !razorpayKey.startsWith('rzp_')) {
-      toast.error("Invalid Razorpay Key ID format. It should start with 'rzp_'.");
-      return;
-    }
-    
-    if (adminPassword.trim().length < 4) {
-      toast.error("Admin password must be at least 4 characters.");
-      return;
-    }
+  const deliverOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deliveryData) return;
 
     try {
-      // Save to Firestore for backend access
-      await setDoc(doc(db, "settings", "razorpay"), {
-        keyId: razorpayKey.trim(),
-        keySecret: razorpaySecret.trim(),
-        updatedAt: serverTimestamp()
+      const res = await fetch("/api/admin/deliver-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: deliveryData.orderId,
+          deliveryLink: deliveryData.link,
+          deliveryFileUrl: deliveryData.fileUrl
+        })
       });
 
-      // Also save to localStorage for immediate client access
-      localStorage.setItem('razorpay_key_id', razorpayKey.trim());
-      localStorage.setItem('admin_password', adminPassword.trim());
-      
-      toast.success("Settings saved successfully.");
-      setShowSettings(false);
+      if (res.ok) {
+        await fetch('/api/notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            email: orders.find(o => o.id === deliveryData.orderId)?.customerEmail, 
+            status: 'delivered', 
+            orderId: deliveryData.orderId 
+          })
+        });
+        toast.success("Order delivered successfully!");
+        setDeliveryData(null);
+      } else {
+        toast.error("Failed to deliver order");
+      }
     } catch (error) {
-      console.error("Error saving settings:", error);
-      toast.error("Failed to save settings to database.");
+      toast.error("Delivery failed");
     }
   };
 
@@ -252,7 +195,6 @@ export default function Admin() {
       
       await updateDoc(doc(db, "orders", order.id!), updateData);
       
-      // Send notification email
       if (status === 'approved' || status === 'rejected' || status === 'refunded') {
         await fetch('/api/notify', {
           method: 'POST',
@@ -273,7 +215,9 @@ export default function Admin() {
     }
   };
 
-  if (!hasPasswordSet) {
+  if (isSetup === null) return null;
+
+  if (!isSetup) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-black">
         <motion.div 
@@ -288,27 +232,24 @@ export default function Admin() {
             INITIAL <span className="text-parrot">SETUP.</span>
           </h1>
           <p className="text-white/40 text-center text-sm mb-8">
-            No admin password detected. Please set your master password to secure the dashboard.
+            Set your master admin password to secure the dashboard.
           </p>
           
           <form onSubmit={handleInitialSetup} className="space-y-4">
-            <div className="relative">
-              <input 
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Set New Admin Password"
-                className="w-full px-4 py-4 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/20 focus:border-parrot focus:ring-1 focus:ring-parrot outline-none transition-all"
-                required
-              />
-            </div>
-
+            <input 
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Set New Admin Password"
+              className="w-full px-4 py-4 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/20 focus:border-parrot focus:ring-1 focus:ring-parrot outline-none transition-all"
+              required
+            />
             <button 
               type="submit"
+              disabled={authLoading}
               className="w-full py-4 bg-parrot text-black font-bold rounded-xl hover:bg-white transition-all flex items-center justify-center space-x-2"
             >
-              <CheckCircle size={20} />
-              <span>Set Password & Continue</span>
+              {authLoading ? <Loader2 className="animate-spin" size={20} /> : <span>Set Password & Continue</span>}
             </button>
           </form>
         </motion.div>
@@ -325,57 +266,30 @@ export default function Admin() {
           className="w-full max-w-md p-8 bg-zinc-900 border border-white/10 rounded-3xl shadow-2xl"
         >
           <div className="w-16 h-16 bg-parrot/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            {isTrustedDevice ? <ShieldCheck className="text-parrot" size={32} /> : <Lock className="text-parrot" size={32} />}
+            <Lock className="text-parrot" size={32} />
           </div>
           <h1 className="text-3xl font-black tracking-tighter uppercase text-center mb-2">
-            {isTrustedDevice ? "QUICK " : "ADMIN "}
-            <span className="text-parrot">ACCESS.</span>
+            ADMIN <span className="text-parrot">ACCESS.</span>
           </h1>
           <p className="text-white/40 text-center text-sm mb-8">
-            {isTrustedDevice 
-              ? "Trusted device detected. Confirm password to proceed." 
-              : "This area is restricted. Please enter the password."}
+            Please enter your password to access the dashboard.
           </p>
           
           <form onSubmit={handleLogin} className="space-y-4">
-            <div className="relative">
-              <input 
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter Password"
-                className="w-full px-4 py-4 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/20 focus:border-parrot focus:ring-1 focus:ring-parrot outline-none transition-all"
-                required
-              />
-            </div>
-
-            {!isTrustedDevice && (
-              <label className="flex items-center space-x-3 cursor-pointer group">
-                <div className="relative">
-                  <input 
-                    type="checkbox"
-                    checked={trustDevice}
-                    onChange={(e) => setTrustDevice(e.target.checked)}
-                    className="sr-only"
-                  />
-                  <div className={`w-10 h-6 rounded-full transition-colors ${trustDevice ? 'bg-parrot' : 'bg-white/10'}`}></div>
-                  <div className={`absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform ${trustDevice ? 'translate-x-4' : 'translate-x-0'}`}></div>
-                </div>
-                <span className="text-sm text-white/60 group-hover:text-white transition-colors">Trust this device</span>
-              </label>
-            )}
-
+            <input 
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter Password"
+              className="w-full px-4 py-4 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/20 focus:border-parrot focus:ring-1 focus:ring-parrot outline-none transition-all"
+              required
+            />
             <button 
               type="submit"
               disabled={authLoading}
               className="w-full py-4 bg-parrot text-black font-bold rounded-xl hover:bg-white transition-all flex items-center justify-center space-x-2"
             >
-              {authLoading ? <Loader2 className="animate-spin" size={20} /> : (
-                <>
-                  <ShieldCheck size={20} />
-                  <span>Authenticate</span>
-                </>
-              )}
+              {authLoading ? <Loader2 className="animate-spin" size={20} /> : <span>Authenticate</span>}
             </button>
           </form>
         </motion.div>
@@ -392,20 +306,7 @@ export default function Admin() {
         </div>
         <div className="flex flex-wrap items-center gap-4">
           <button 
-            onClick={() => {
-              setShowDeviceManager(!showDeviceManager);
-              setShowSettings(false);
-            }}
-            className="flex items-center space-x-2 px-6 py-3 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all font-bold"
-          >
-            <Monitor size={20} className={showDeviceManager ? "text-parrot" : "text-white"} />
-            <span>Devices</span>
-          </button>
-          <button 
-            onClick={() => {
-              setShowSettings(!showSettings);
-              setShowDeviceManager(false);
-            }}
+            onClick={() => setShowSettings(!showSettings)}
             className="flex items-center space-x-2 px-6 py-3 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all font-bold"
           >
             <Settings size={20} className={showSettings ? "text-parrot" : "text-white"} />
@@ -431,114 +332,37 @@ export default function Admin() {
           className="mb-12 p-8 bg-zinc-900 border border-parrot/20 rounded-3xl"
         >
           <div className="flex items-center space-x-3 mb-6">
-            <Key className="text-parrot" size={24} />
-            <h2 className="text-xl font-black tracking-tighter uppercase">Payment Settings</h2>
+            <Lock className="text-parrot" size={24} />
+            <h2 className="text-xl font-black tracking-tighter uppercase">Security Settings</h2>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="max-w-md">
-              <label className="block text-xs font-bold text-white/40 uppercase tracking-widest mb-2">Razorpay Key ID</label>
+          <form onSubmit={handleChangePassword} className="max-w-md space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-white/40 uppercase tracking-widest mb-2">Old Password</label>
               <input 
                 type="password"
-                value={razorpayKey}
-                onChange={(e) => setRazorpayKey(e.target.value)}
-                placeholder="rzp_test_..."
-                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/20 focus:border-parrot focus:ring-1 focus:ring-parrot outline-none transition-all mb-4"
-              />
-              <label className="block text-xs font-bold text-white/40 uppercase tracking-widest mb-2">Razorpay Key Secret</label>
-              <input 
-                type="password"
-                value={razorpaySecret}
-                onChange={(e) => setRazorpaySecret(e.target.value)}
-                placeholder="••••••••••••••••"
-                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/20 focus:border-parrot focus:ring-1 focus:ring-parrot outline-none transition-all"
+                value={oldPassword}
+                onChange={(e) => setOldPassword(e.target.value)}
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white outline-none focus:border-parrot transition-all"
+                required
               />
             </div>
-            <div className="max-w-md">
-              <label className="block text-xs font-bold text-white/40 uppercase tracking-widest mb-2">Admin Password</label>
+            <div>
+              <label className="block text-xs font-bold text-white/40 uppercase tracking-widest mb-2">New Password</label>
               <input 
                 type="password"
-                value={adminPassword}
-                onChange={(e) => setAdminPassword(e.target.value)}
-                placeholder="Set Admin Password"
-                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/20 focus:border-parrot focus:ring-1 focus:ring-parrot outline-none transition-all mb-4"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white outline-none focus:border-parrot transition-all"
+                required
               />
             </div>
-          </div>
-          <div className="mt-4">
             <button 
-              onClick={saveSettings}
+              type="submit"
               className="px-8 py-3 bg-parrot text-black font-bold rounded-xl hover:bg-white transition-all"
             >
-              Save Settings
+              Update Password
             </button>
-            <p className="mt-3 text-xs text-white/40 italic">These settings are stored locally in your browser.</p>
-          </div>
-        </motion.div>
-      )}
-
-      {showDeviceManager && (
-        <motion.div 
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-12 p-8 bg-zinc-900 border border-parrot/20 rounded-3xl"
-        >
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center space-x-3">
-              <Monitor className="text-parrot" size={24} />
-              <h2 className="text-xl font-black tracking-tighter uppercase">Trusted Devices Manager</h2>
-            </div>
-            <button 
-              onClick={removeAllDevices}
-              className="text-xs font-bold text-red-500 uppercase tracking-widest hover:text-white transition-colors flex items-center space-x-2"
-            >
-              <Trash2 size={14} />
-              <span>Remove All Devices</span>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {trustedDevices.map((device) => (
-              <div 
-                key={device.id}
-                className={`p-4 rounded-2xl border transition-all ${device.id === deviceId ? 'bg-parrot/5 border-parrot/30' : 'bg-white/5 border-white/10'}`}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center space-x-3">
-                    <div className={`p-2 rounded-lg ${device.id === deviceId ? 'bg-parrot/20 text-parrot' : 'bg-white/10 text-white/40'}`}>
-                      <Monitor size={18} />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold truncate max-w-[150px]">{device.name}</h3>
-                      <p className="text-[10px] text-white/40 uppercase tracking-widest">
-                        {device.id === deviceId ? "Current Device" : "Trusted Device"}
-                      </p>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => removeDevice(device.id)}
-                    className="p-2 text-white/20 hover:text-red-500 transition-colors"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] text-white/30 truncate">{device.userAgent}</p>
-                  <p className="text-[10px] text-white/60">Last used: {device.lastUsed?.toDate().toLocaleString()}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-8 pt-6 border-t border-white/5 flex items-center justify-between">
-            <p className="text-xs text-white/40 italic">Trusted devices can access the admin panel with a quick password confirmation.</p>
-            <button 
-              onClick={logoutAndUntrust}
-              className="text-xs font-bold text-white/60 hover:text-red-500 transition-colors uppercase tracking-widest flex items-center space-x-2"
-            >
-              <Shield size={14} />
-              <span>Untrust this device & Logout</span>
-            </button>
-          </div>
+          </form>
         </motion.div>
       )}
 
@@ -564,7 +388,7 @@ export default function Admin() {
                       order.status === 'rejected' ? 'bg-red-500/20 text-red-500' :
                       order.status === 'refunded' ? 'bg-orange-500/20 text-orange-500' :
                       order.status === 'processing' ? 'bg-blue-500/20 text-blue-500' :
-                      order.status === 'cancelled' ? 'bg-red-500/20 text-red-500' :
+                      order.status === 'delivered' ? 'bg-green-500/20 text-green-500' :
                       'bg-yellow-500/20 text-yellow-500'
                     }`}>
                       {order.status}
@@ -585,10 +409,6 @@ export default function Admin() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-4">
-                  <div className="text-right lg:mr-8">
-                    <span className="block text-xs font-bold text-white/40 uppercase tracking-widest mb-1">UPI ID (Refund)</span>
-                    <span className="text-sm font-bold text-parrot">{order.customerUpiId}</span>
-                  </div>
                   <div className="text-right lg:mr-8">
                     <span className="block text-xs font-bold text-white/40 uppercase tracking-widest mb-1">Advance Paid</span>
                     <span className="text-lg font-bold text-white">₹{order.advancePaid}</span>
@@ -613,15 +433,6 @@ export default function Admin() {
                         </button>
                       </>
                     )}
-                    {order.status === 'rejected' && order.paymentStatus === 'paid' && (
-                      <button
-                        onClick={() => updateStatus(order, 'refunded')}
-                        className="flex items-center space-x-2 px-4 py-2 bg-orange-500/10 text-orange-500 border border-orange-500/20 rounded-xl hover:bg-orange-500 hover:text-white transition-all font-bold text-sm"
-                      >
-                        <RefreshCcw size={16} />
-                        <span>Refund Payment</span>
-                      </button>
-                    )}
                     {order.status === 'approved' && (
                       <button
                         onClick={() => updateStatus(order, 'processing')}
@@ -633,16 +444,65 @@ export default function Admin() {
                     )}
                     {order.status === 'processing' && (
                       <button
-                        onClick={() => updateStatus(order, 'completed')}
-                        className="p-3 bg-green-500/10 text-green-500 rounded-xl hover:bg-green-500 hover:text-white transition-all"
-                        title="Mark Completed"
+                        onClick={() => setDeliveryData({ orderId: order.id!, link: "", fileUrl: "" })}
+                        className="flex items-center space-x-2 px-4 py-2 bg-green-500/10 text-green-500 border border-green-500/20 rounded-xl hover:bg-green-500 hover:text-white transition-all font-bold text-sm"
                       >
-                        <CheckCircle size={20} />
+                        <CheckCircle size={16} />
+                        <span>Deliver Work</span>
                       </button>
                     )}
                   </div>
                 </div>
               </div>
+
+              {deliveryData?.orderId === order.id && (
+                <motion.form 
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  onSubmit={deliverOrder}
+                  className="mt-6 p-6 bg-white/5 border border-parrot/20 rounded-2xl space-y-4"
+                >
+                  <h4 className="font-bold text-parrot uppercase tracking-tighter">Delivery Details</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <input 
+                      type="url"
+                      placeholder="Delivery Link (Google Drive, etc.)"
+                      value={deliveryData.link}
+                      onChange={(e) => setDeliveryData({ ...deliveryData, link: e.target.value })}
+                      className="w-full px-4 py-3 bg-black border border-white/10 rounded-xl text-white outline-none focus:border-parrot"
+                    />
+                    <input 
+                      type="url"
+                      placeholder="Direct File URL (Optional)"
+                      value={deliveryData.fileUrl}
+                      onChange={(e) => setDeliveryData({ ...deliveryData, fileUrl: e.target.value })}
+                      className="w-full px-4 py-3 bg-black border border-white/10 rounded-xl text-white outline-none focus:border-parrot"
+                    />
+                  </div>
+                  <div className="flex space-x-3">
+                    <button type="submit" className="px-6 py-2 bg-parrot text-black font-bold rounded-lg hover:bg-white transition-all">Submit Delivery</button>
+                    <button type="button" onClick={() => setDeliveryData(null)} className="px-6 py-2 bg-white/5 text-white/60 rounded-lg hover:bg-white/10 transition-all">Cancel</button>
+                  </div>
+                </motion.form>
+              )}
+
+              {order.status === 'delivered' && (
+                <div className="mt-6 p-4 bg-green-500/5 border border-green-500/20 rounded-2xl">
+                  <p className="text-xs font-bold text-green-500 uppercase tracking-widest mb-2">Delivered Assets</p>
+                  <div className="flex flex-wrap gap-4">
+                    {order.deliveryLink && (
+                      <a href={order.deliveryLink} target="_blank" rel="noopener noreferrer" className="text-sm text-white hover:text-parrot flex items-center space-x-1 underline">
+                        <ExternalLink size={14} /> <span>Main Delivery Link</span>
+                      </a>
+                    )}
+                    {order.deliveryFileUrl && (
+                      <a href={order.deliveryFileUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-white hover:text-parrot flex items-center space-x-1 underline">
+                        <ExternalLink size={14} /> <span>Direct File</span>
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div className="mt-6 pt-6 border-t border-white/5 grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div>

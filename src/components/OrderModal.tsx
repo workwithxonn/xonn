@@ -16,7 +16,6 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
-  const [razorpayKey, setRazorpayKey] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     customerName: "",
     customerEmail: "",
@@ -27,25 +26,6 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
     projectDetails: "",
     budget: "",
   });
-
-  // Fetch Razorpay Key on mount
-  React.useEffect(() => {
-    const fetchKey = async () => {
-      try {
-        const settingsDoc = await getDoc(doc(db, "settings", "razorpay"));
-        if (settingsDoc.exists()) {
-          setRazorpayKey(settingsDoc.data().keyId);
-        } else {
-          // Fallback to env
-          setRazorpayKey(import.meta.env.VITE_RAZORPAY_KEY_ID);
-        }
-      } catch (error) {
-        console.error("Error fetching Razorpay key:", error);
-        setRazorpayKey(import.meta.env.VITE_RAZORPAY_KEY_ID);
-      }
-    };
-    fetchKey();
-  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -89,15 +69,13 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
     // Ensure Razorpay script is loaded
     if (!(window as any).Razorpay) {
       toast.error("Razorpay script not loaded. Please check your internet connection and refresh.");
-      console.error("Razorpay script missing from window object");
       return;
     }
 
-    const finalKey = razorpayKey || localStorage.getItem("razorpay_key_id") || import.meta.env.VITE_RAZORPAY_KEY_ID;
+    const finalKey = import.meta.env.VITE_RAZORPAY_KEY_ID;
     
     if (!finalKey) {
       toast.error("Razorpay API Key is missing. Please contact support.");
-      console.error("Razorpay Key ID is empty or undefined");
       return;
     }
 
@@ -105,12 +83,6 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
     try {
       const advanceAmount = Math.round(product.price * 0.5);
       
-      console.log("Initiating payment with:", {
-        key: finalKey,
-        amountRupees: advanceAmount,
-        email: formData.customerEmail
-      });
-
       // Create Razorpay Order via backend
       const response = await fetch("/api/create-order", {
         method: "POST",
@@ -124,7 +96,6 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
       }
       
       const rzpOrder = await response.json();
-      console.log("Razorpay order created:", rzpOrder);
 
       const options = {
         key: finalKey,
@@ -135,7 +106,6 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
         order_id: rzpOrder.id,
         handler: async (response: any) => {
           try {
-            console.log("Payment successful, saving order...", response);
             setLoading(true);
             const imageUrls = await uploadFiles();
             
@@ -179,7 +149,6 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
         modal: {
           ondismiss: function() {
             setLoading(false);
-            console.log("Checkout modal closed by user");
           }
         }
       };
@@ -195,10 +164,7 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
     } catch (error: any) {
       console.error("Payment initialization error:", error);
       toast.error(error.message || "Failed to initiate payment. Please try again.");
-    } finally {
-      // Note: we don't set loading to false here if rzp.open() succeeds, 
-      // because the modal is open. We handle it in ondismiss or handler.
-      // However, if it fails before rzp.open(), we need to reset it.
+      setLoading(false);
     }
   };
 
