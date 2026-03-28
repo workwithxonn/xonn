@@ -10,20 +10,27 @@ export default function Footer() {
 
   const handleAdminTrigger = () => {
     const now = Date.now();
-    
-    // If it's the first tap or the 0.8s window has passed, reset
-    if (tapCount.current === 0 || now - startTime.current > 800) {
+    const timeElapsedSinceStart = now - startTime.current;
+
+    // Reset if time exceeds 0.8 seconds or if it's the first tap
+    if (tapCount.current === 0 || timeElapsedSinceStart > 800) {
+      console.log("Admin Trigger: Timer started/reset.");
       tapCount.current = 1;
       startTime.current = now;
     } else {
       tapCount.current += 1;
+      console.log(`Admin Trigger: Tap ${tapCount.current} detected. Time since start: ${now - startTime.current}ms`);
     }
 
     if (tapCount.current === 5) {
-      if (now - startTime.current <= 800) {
+      const totalTime = now - startTime.current;
+      if (totalTime <= 800) {
+        console.log(`Admin Trigger: SUCCESS! 5 taps in ${totalTime}ms. Redirecting to admin portal...`);
         navigate("/xon-admin-portal");
+      } else {
+        console.log(`Admin Trigger: FAILED. 5 taps took ${totalTime}ms (limit 800ms).`);
       }
-      tapCount.current = 0; // Reset after trigger
+      tapCount.current = 0; // Reset after attempt
     }
   };
 
@@ -67,7 +74,7 @@ export default function Footer() {
         <div className="flex flex-col md:flex-row items-center justify-between pt-12 border-t border-white/10">
           <span 
             onClick={handleAdminTrigger}
-            className="text-2xl font-bold tracking-tighter text-parrot mb-4 md:mb-0 cursor-default select-none"
+            className="text-2xl font-bold tracking-tighter text-parrot mb-4 md:mb-0 cursor-default select-none relative z-50"
           >
             XONN
           </span>
