@@ -13,13 +13,12 @@ export default function Navbar() {
 
           <div className="hidden md:flex items-center space-x-8">
             <a href="#products" className="text-sm font-medium text-white/70 hover:text-parrot transition-colors">Products</a>
+            <Link to="/status" className="text-sm font-medium text-white/70 hover:text-parrot transition-colors">Check Status</Link>
             <a href="#faq" className="text-sm font-medium text-white/70 hover:text-parrot transition-colors">FAQ</a>
           </div>
 
           <div className="flex items-center space-x-4">
-            <Link to="/admin" className="p-2 text-white/70 hover:text-parrot transition-colors">
-              <span className="text-xs font-bold uppercase tracking-widest opacity-50 hover:opacity-100">Admin</span>
-            </Link>
+            {/* Admin link hidden */}
           </div>
         </div>
       </div>

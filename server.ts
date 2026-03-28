@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import RazorpayModule from "razorpay";
 import dotenv from "dotenv";
+import nodemailer from "nodemailer";
 
 dotenv.config();
 
@@ -37,7 +38,65 @@ async function startServer() {
     return razorpayInstance;
   };
 
+  // Email Transporter (Mock for now, user should configure SMTP in Secrets)
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST || "smtp.ethereal.email",
+    port: parseInt(process.env.SMTP_PORT || "587"),
+    secure: false,
+    auth: {
+      user: process.env.SMTP_USER || "mock_user",
+      pass: process.env.SMTP_PASS || "mock_pass",
+    },
+  });
+
   // API Routes
+  app.post("/api/admin/auth", (req, res) => {
+    const { password } = req.body;
+    const adminPassword = process.env.ADMIN_PASSWORD || "admin123"; // Default for demo
+
+    if (password === adminPassword) {
+      res.json({ success: true, token: "mock_admin_token" });
+    } else {
+      res.status(401).json({ success: false, error: "Invalid password" });
+    }
+  });
+
+  app.post("/api/notify", async (req, res) => {
+    const { email, status, orderId } = req.body;
+    
+    let subject = "";
+    let text = "";
+
+    if (status === "approved") {
+      subject = "Your Order has been Approved!";
+      text = `Great news! Your order #${orderId?.slice(-6)} has been approved. You can now proceed with the payment to start the project. \n\nCheck your status here: ${process.env.APP_URL}/status`;
+    } else if (status === "rejected") {
+      subject = "Order Update: Not Approved";
+      text = `We're sorry, but your order #${orderId?.slice(-6)} was not approved at this time. This could be due to budget constraints or project requirements. \n\nFeel free to submit a new request later.`;
+    }
+
+    try {
+      // In a real scenario, this would send an email. 
+      // For now, we'll log it and return success.
+      console.log(`Sending email to ${email}: ${subject}`);
+      
+      // If SMTP is configured, uncomment this:
+      /*
+      await transporter.sendMail({
+        from: '"XONN Admin" <admin@xonn.com>',
+        to: email,
+        subject: subject,
+        text: text,
+      });
+      */
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Email error:", error);
+      res.status(500).json({ error: "Failed to send notification" });
+    }
+  });
+
   app.post("/api/create-order", async (req, res) => {
     try {
       const { amount } = req.body;

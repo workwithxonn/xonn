@@ -1,5 +1,5 @@
 export type ProductType = 'thumbnail' | 'gfx' | 'kit';
-export type OrderStatus = 'pending' | 'processing' | 'completed' | 'cancelled';
+export type OrderStatus = 'pending' | 'approved' | 'rejected' | 'processing' | 'completed' | 'cancelled';
 
 export interface Product {
   id: string;

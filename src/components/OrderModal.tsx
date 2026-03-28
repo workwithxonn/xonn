@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, ChevronRight, ChevronLeft, Upload, CheckCircle2, Loader2, CreditCard } from "lucide-react";
+import { X, ChevronRight, ChevronLeft, Upload, CheckCircle2, Loader2, CreditCard, Clock } from "lucide-react";
 import { Product, Order } from "../types";
 import { db, storage } from "../firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
@@ -50,7 +50,7 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
       );
   };
 
-  const handlePayment = async () => {
+  const handleSubmit = async () => {
     if (!validateEmail(formData.customerEmail)) {
       toast.error("Please enter a valid email address.");
       return;
@@ -58,59 +58,10 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
 
     setLoading(true);
     try {
-      const razorpayKey = localStorage.getItem('razorpay_key_id') || import.meta.env.VITE_RAZORPAY_KEY_ID;
-      if (!razorpayKey) {
-        toast.error("Razorpay Key ID is missing. Please configure it in admin settings.");
-        setLoading(false);
-        return;
-      }
-
-      const advanceAmount = Math.round(product.price * 0.5);
-      
-      // For demo purposes, we'll simulate the order creation if backend is not available
-      // In a real app, this should be a server-side call
-      const options = {
-        key: razorpayKey,
-        amount: advanceAmount * 100, // Razorpay expects amount in paise
-        currency: "INR",
-        name: "XONN",
-        description: `Advance Payment for ${product.name}`,
-        handler: async (response: any) => {
-          // Payment successful
-          await finalizeOrder(response.razorpay_payment_id, advanceAmount);
-        },
-        prefill: {
-          name: formData.customerName,
-          email: formData.customerEmail,
-        },
-        theme: {
-          color: "#A7FC00",
-        },
-      };
-
-      if (!(window as any).Razorpay) {
-        toast.error("Razorpay SDK failed to load. Please check your internet connection.");
-        setLoading(false);
-        return;
-      }
-
-      const rzp = new (window as any).Razorpay(options);
-      rzp.open();
-    } catch (error) {
-      console.error("Payment error:", error);
-      toast.error("Payment failed. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const finalizeOrder = async (paymentId: string, advancePaid: number) => {
-    setLoading(true);
-    try {
       const imageUrls = await uploadFiles();
       
-      const orderData: Order = {
-        userId: formData.customerEmail, // Using email as userId since auth is removed
+      const orderData: Omit<Order, 'id'> = {
+        userId: formData.customerEmail,
         customerName: formData.customerName,
         customerEmail: formData.customerEmail,
         channelName: formData.channelName,
@@ -122,17 +73,16 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
         status: 'pending',
         createdAt: serverTimestamp(),
         amount: product.price,
-        advancePaid: advancePaid,
-        paymentStatus: 'partial',
-        razorpayPaymentId: paymentId,
+        advancePaid: 0,
+        paymentStatus: 'pending',
       };
 
       await addDoc(collection(db, "orders"), orderData);
       setStep(4);
-      toast.success("Your order has been successfully placed.");
+      toast.success("Order submitted for review!");
     } catch (error) {
       console.error("Order error:", error);
-      toast.error("Failed to save order. Please contact support.");
+      toast.error("Failed to submit order. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -165,8 +115,8 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
             <h2 className="text-2xl font-black tracking-tighter">
               {step === 1 && "ORDER DETAILS"}
               {step === 2 && "PROJECT INFO"}
-              {step === 3 && "PAYMENT"}
-              {step === 4 && "ORDER PLACED"}
+              {step === 3 && "REVIEW"}
+              {step === 4 && "SUBMITTED"}
             </h2>
           </div>
 
@@ -304,16 +254,16 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
                   </div>
                   <div className="h-px bg-white/10 my-4" />
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-white/40">50% Advance Now</span>
+                    <span className="text-sm text-white/40">Advance (After Approval)</span>
                     <span className="text-xl font-black text-parrot">₹{Math.round(product.price * 0.5)}</span>
                   </div>
                 </div>
 
                 <div className="text-center py-4">
                   <div className="w-12 h-12 bg-parrot/10 rounded-full flex items-center justify-center mx-auto mb-2">
-                    <CreditCard size={24} className="text-parrot" />
+                    <Clock size={24} className="text-parrot" />
                   </div>
-                  <p className="text-xs text-white/40">Secure payment via Razorpay / UPI</p>
+                  <p className="text-xs text-white/40">Our team will review your requirements and budget before approval.</p>
                 </div>
 
                 <div className="flex space-x-4">
@@ -325,7 +275,7 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
                     <span>Back</span>
                   </button>
                   <button
-                    onClick={handlePayment}
+                    onClick={handleSubmit}
                     disabled={loading}
                     className="flex-[2] py-4 bg-parrot text-black font-bold rounded-xl hover:bg-white transition-all flex items-center justify-center space-x-2"
                   >
@@ -333,7 +283,7 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
                       <Loader2 size={20} className="animate-spin" />
                     ) : (
                       <>
-                        <span>Pay Advance</span>
+                        <span>Submit for Review</span>
                         <ChevronRight size={18} />
                       </>
                     )}
@@ -350,12 +300,12 @@ export default function OrderModal({ product, onClose }: OrderModalProps) {
                 className="text-center py-12"
               >
                 <div className="w-20 h-20 bg-parrot/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <CheckCircle2 size={48} className="text-parrot" />
+                  <Clock size={48} className="text-parrot" />
                 </div>
-                <h3 className="text-3xl font-black tracking-tighter mb-4 text-parrot">ORDER PLACED.</h3>
+                <h3 className="text-3xl font-black tracking-tighter mb-4 text-parrot">SUBMITTED.</h3>
                 <p className="text-white/60 mb-8">
-                  Your order has been successfully placed. We'll contact you at 
-                  <span className="text-white font-bold ml-1">{formData.customerEmail}</span> to discuss further details.
+                  Your order has been submitted for review. We'll notify you at 
+                  <span className="text-white font-bold ml-1">{formData.customerEmail}</span> once it's approved.
                 </p>
                 <button
                   onClick={onClose}

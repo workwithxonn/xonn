@@ -3,6 +3,7 @@ import { Toaster } from "sonner";
 import Navbar from "./components/Navbar";
 import Home from "./pages/Home";
 import Admin from "./pages/Admin";
+import OrderStatus from "./pages/OrderStatus";
 
 export default function App() {
   return (
@@ -11,7 +12,8 @@ export default function App() {
         <Navbar />
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/admin" element={<Admin />} />
+          <Route path="/xon-admin-portal" element={<Admin />} />
+          <Route path="/status" element={<OrderStatus />} />
         </Routes>
         <Toaster position="top-center" theme="dark" />
       </div>
