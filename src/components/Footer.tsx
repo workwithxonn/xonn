@@ -9,13 +9,14 @@ export default function Footer() {
   const startTime = useRef(0);
 
   useEffect(() => {
-    const trigger = document.getElementById("admin-trigger-logo");
+    console.log("Admin script running");
+    const trigger = document.getElementById("adminTrigger");
     if (!trigger) {
-      console.error("Admin Trigger: Element #admin-trigger-logo not found in DOM.");
+      console.error("Admin Trigger: Element #adminTrigger not found in DOM.");
       return;
     }
 
-    console.log("Admin Trigger: Production script active. Element found.");
+    console.log("Trigger element found");
 
     const handleTrigger = (e: MouseEvent) => {
       const now = Date.now();
@@ -86,7 +87,7 @@ export default function Footer() {
         
         <div className="flex flex-col md:flex-row items-center justify-between pt-12 border-t border-white/10">
           <span 
-            id="admin-trigger-logo"
+            id="adminTrigger"
             className="text-2xl font-bold tracking-tighter text-parrot mb-4 md:mb-0 cursor-default select-none relative z-50"
           >
             XONN
