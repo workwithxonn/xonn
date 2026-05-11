@@ -5,8 +5,8 @@ import { fileURLToPath } from "url";
 import RazorpayModule from "razorpay";
 import dotenv from "dotenv";
 import nodemailer from "nodemailer";
-import admin from "firebase-admin";
-import { getFirestore } from "firebase-admin/firestore";
+import { initializeApp } from "firebase/app";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, query, orderBy, getDocs, serverTimestamp } from "firebase/firestore";
 import fs from "fs";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -14,12 +14,12 @@ import cookieParser from "cookie-parser";
 
 dotenv.config();
 
-// Initialize Firebase Admin
+// Initialize Firebase with Client SDK for better cross-environment support in AI Studio
 const firebaseConfig = JSON.parse(fs.readFileSync("./firebase-applet-config.json", "utf-8"));
-const adminApp = admin.initializeApp({
-  projectId: firebaseConfig.projectId,
-});
-const db = getFirestore(adminApp, firebaseConfig.firestoreDatabaseId);
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+
+console.log(`Firebase Client SDK initialized for project: ${firebaseConfig.projectId}, database: ${firebaseConfig.firestoreDatabaseId}`);
 
 const Razorpay = (RazorpayModule as any).default || RazorpayModule;
 const JWT_SECRET = process.env.JWT_SECRET || "xonn_admin_secret_key_2026";
@@ -35,7 +35,6 @@ async function startServer() {
   app.use(cookieParser());
 
   const getRazorpay = async () => {
-    // ALWAYS use backend environment variables for security
     const key_id = process.env.VITE_RAZORPAY_KEY_ID;
     const key_secret = process.env.RAZORPAY_KEY_SECRET;
 
@@ -66,40 +65,51 @@ async function startServer() {
   // API Routes
   app.get("/api/admin/check-setup", async (req, res) => {
     try {
-      const adminDoc = await db.collection("admin").doc("credentials").get();
-      res.json({ isSetup: adminDoc.exists });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to check setup" });
+      console.log("Checking admin setup status via Client SDK...");
+      const docRef = doc(db, "admin", "credentials");
+      const adminDoc = await getDoc(docRef);
+      console.log("Admin setup exists:", adminDoc.exists());
+      res.json({ isSetup: adminDoc.exists() });
+    } catch (error: any) {
+      console.error("Failed to check setup:", error);
+      res.status(500).json({ error: "Failed to check setup", details: error.message });
     }
   });
 
   app.post("/api/admin/setup", async (req, res) => {
     try {
       const { password } = req.body;
-      const adminDoc = await db.collection("admin").doc("credentials").get();
+      console.log("Attempting initial admin setup via Client SDK...");
       
-      if (adminDoc.exists) {
+      const docRef = doc(db, "admin", "credentials");
+      const adminDoc = await getDoc(docRef);
+      
+      if (adminDoc.exists()) {
+        console.warn("Setup aborted: Admin already exists.");
         return res.status(400).json({ error: "Admin already setup" });
       }
 
       const hashedPassword = await bcrypt.hash(password, 10);
-      await db.collection("admin").doc("credentials").set({
+      await setDoc(docRef, {
         password: hashedPassword,
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
+        createdAt: serverTimestamp()
       });
 
+      console.log("Admin setup successful.");
       res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: "Setup failed" });
+    } catch (error: any) {
+      console.error("Setup failed error:", error);
+      res.status(500).json({ error: "Setup failed", details: error.message });
     }
   });
 
   app.post("/api/admin/login", async (req, res) => {
     try {
       const { password } = req.body;
-      const adminDoc = await db.collection("admin").doc("credentials").get();
+      const docRef = doc(db, "admin", "credentials");
+      const adminDoc = await getDoc(docRef);
       
-      if (!adminDoc.exists) {
+      if (!adminDoc.exists()) {
         return res.status(404).json({ error: "Admin not setup" });
       }
 
@@ -107,8 +117,6 @@ async function startServer() {
       const isValid = await bcrypt.compare(password, adminData?.password);
 
       console.log("Admin Login Debug:");
-      console.log("- Entered Password (trimmed):", password);
-      console.log("- Stored Password Hash:", adminData?.password);
       console.log("- Comparison Result:", isValid);
 
       if (!isValid) {
@@ -118,9 +126,9 @@ async function startServer() {
       const token = jwt.sign({ role: "admin" }, JWT_SECRET, { expiresIn: "24h" });
       res.cookie("admin_token", token, {
         httpOnly: true,
-        secure: true, // Required for SameSite=None
-        sameSite: "none", // Required for cross-origin iframe
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+        secure: true,
+        sameSite: "none",
+        maxAge: 24 * 60 * 60 * 1000
       });
 
       res.json({ success: true });
@@ -141,7 +149,8 @@ async function startServer() {
   app.post("/api/admin/change-password", authenticateAdmin, async (req, res) => {
     try {
       const { oldPassword, newPassword } = req.body;
-      const adminDoc = await db.collection("admin").doc("credentials").get();
+      const docRef = doc(db, "admin", "credentials");
+      const adminDoc = await getDoc(docRef);
       const adminData = adminDoc.data();
 
       const isValid = await bcrypt.compare(oldPassword, adminData?.password);
@@ -150,9 +159,9 @@ async function startServer() {
       }
 
       const hashedPassword = await bcrypt.hash(newPassword, 10);
-      await db.collection("admin").doc("credentials").update({
+      await updateDoc(docRef, {
         password: hashedPassword,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        updatedAt: serverTimestamp()
       });
 
       res.json({ success: true });
@@ -170,7 +179,7 @@ async function startServer() {
 
       const razorpay = await getRazorpay();
       const options = {
-        amount: Math.round(amount * 100), // amount in smallest currency unit (paise)
+        amount: Math.round(amount * 100),
         currency: "INR",
         receipt: `receipt_${Date.now()}`,
       };
@@ -185,7 +194,8 @@ async function startServer() {
 
   app.get("/api/admin/orders", authenticateAdmin, async (req, res) => {
     try {
-      const snapshot = await db.collection("orders").orderBy("createdAt", "desc").get();
+      const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
+      const snapshot = await getDocs(q);
       const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       res.json(orders);
     } catch (error) {
@@ -196,9 +206,10 @@ async function startServer() {
   app.post("/api/admin/update-order-status", authenticateAdmin, async (req, res) => {
     try {
       const { orderId, status } = req.body;
-      await db.collection("orders").doc(orderId).update({
+      const docRef = doc(db, "orders", orderId);
+      await updateDoc(docRef, {
         status,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        updatedAt: serverTimestamp()
       });
       res.json({ success: true });
     } catch (error) {
@@ -209,12 +220,13 @@ async function startServer() {
   app.post("/api/admin/deliver-order", authenticateAdmin, async (req, res) => {
     try {
       const { orderId, deliveryLink, deliveryFileUrl } = req.body;
+      const docRef = doc(db, "orders", orderId);
       
-      await db.collection("orders").doc(orderId).update({
+      await updateDoc(docRef, {
         status: "delivered",
         deliveryLink,
         deliveryFileUrl,
-        deliveredAt: admin.firestore.FieldValue.serverTimestamp()
+        deliveredAt: serverTimestamp()
       });
 
       res.json({ success: true });
@@ -247,11 +259,12 @@ async function startServer() {
   app.post("/api/confirm-balance-payment", async (req, res) => {
     try {
       const { orderId, razorpayPaymentId } = req.body;
+      const docRef = doc(db, "orders", orderId);
       
-      await db.collection("orders").doc(orderId).update({
+      await updateDoc(docRef, {
         paymentStatus: "fully_paid",
         razorpayBalancePaymentId: razorpayPaymentId,
-        fullyPaidAt: admin.firestore.FieldValue.serverTimestamp()
+        fullyPaidAt: serverTimestamp()
       });
 
       res.json({ success: true });
@@ -290,7 +303,6 @@ async function startServer() {
     }
   });
 
-  // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },

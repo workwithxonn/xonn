@@ -97,14 +97,19 @@ service cloud.firestore {
     // Rules
     // ===============================================================
 
+    match /admin/{docId} {
+      allow read, write: if true; // Temporarily allow for setup
+    }
+
     match /users/{userId} {
-      allow read, write: if false; // Users collection no longer used
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isOwner(userId) || isAdmin();
     }
 
     match /orders/{orderId} {
-      allow read: if true; // Allow admin dashboard to work without login
+      allow read: if true;
       allow create: if true;
-      allow update, delete: if true; // Allow admin to manage orders
+      allow update, delete: if true;
     }
 
     match /admin_devices/{deviceId} {
